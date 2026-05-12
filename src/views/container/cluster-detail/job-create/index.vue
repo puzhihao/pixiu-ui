@@ -1776,8 +1776,9 @@
   .deploy-create-header {
     display: flex;
     align-items: center;
-    gap: 0;
+    gap: 4px;
     margin-bottom: 12px;
+    margin-left: calc(-1 * clamp(16px, 4vw, 48px));
   }
 
   .deploy-create-back-btn {
@@ -1801,12 +1802,18 @@
       padding-left: 20px;
       padding-right: 20px;
     }
+    .deploy-create-header {
+      margin-left: -20px;
+    }
   }
 
   @media (max-width: 768px) {
     .deploy-create-page {
       padding-left: 12px;
       padding-right: 12px;
+    }
+    .deploy-create-header {
+      margin-left: -12px;
     }
   }
 
@@ -2045,6 +2052,9 @@
     background: var(--el-fill-color-light, #f5f7fa);
     border-radius: 6px;
     padding: 16px 12px 8px;
+    width: 920px;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .pull-policy-group {
@@ -2567,7 +2577,8 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    width: 100%;
+    width: 920px;
+    max-width: 100%;
     box-sizing: border-box;
   }
 

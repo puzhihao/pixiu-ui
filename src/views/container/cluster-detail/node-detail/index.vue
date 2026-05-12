@@ -27,7 +27,7 @@
                 label: node?.spec?.unschedulable ? '开启调度' : '禁止调度',
                 icon: 'ri:compass-3-line'
               },
-              { key: 'delete', label: '删除', icon: 'ri:delete-bin-4-line', color: '#f56c6c' }
+              { key: 'delete', label: '删除', icon: 'ri:delete-bin-4-line', color: '#409eff' }
             ]"
             @click="onMoreClick"
           />
@@ -142,18 +142,20 @@
 
     <HostRemoteSsh ref="hostRemoteSshRef" />
 
-    <ElDialog v-model="yamlVisible" title="查看 YAML" width="760px">
-      <ElInput v-model="yamlText" type="textarea" :rows="24" readonly />
-      <template #footer>
-        <ElButton @click="yamlVisible = false">关闭</ElButton>
-      </template>
-    </ElDialog>
+    <K8sYamlDialog
+      v-model="yamlVisible"
+      title="查看 YAML"
+      :yaml="yamlText"
+      read-only
+      width="900px"
+      :editor-height="520"
+    />
 
     <ElDialog v-model="labelVisible" title="标签管理" width="720px" @close="resetLabelForm">
       <div v-for="(item, index) in labelRows" :key="index" class="label-row">
         <ElInput v-model="item.key" placeholder="键" class="label-row__key" />
         <ElInput v-model="item.value" placeholder="值" class="label-row__val" />
-        <ElButton text type="danger" @click="labelRows.splice(index, 1)">删除</ElButton>
+        <ElButton text type="primary" @click="labelRows.splice(index, 1)">删除</ElButton>
       </div>
       <ElButton text type="primary" class="mt-2" @click="labelRows.push({ key: '', value: '' })"
         >+ 添加</ElButton
@@ -184,6 +186,7 @@
   import { fetchNodeUsageMetrics } from '@/api/kubernetes/metrics'
   import { kubeProxyAxios } from '@/api/kubeProxy'
   import HostRemoteSsh from '@/views/safeguard/host/modules/host-remote-ssh.vue'
+  import K8sYamlDialog from '@/components/kubernetes/k8s-yaml-dialog.vue'
   import {
     formatContainerRuntime,
     formatKubeletVersion,

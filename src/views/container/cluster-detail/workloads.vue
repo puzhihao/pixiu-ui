@@ -90,12 +90,16 @@
             :data="deplData"
             :columns="deplVisibleColumns"
             :pagination="deplPagination"
-            :pagination-options="{ align: 'right' }"
+            :pagination-options="CLUSTER_TABLE_PAGINATION_OPTIONS"
             @selection-change="onDeplSelectionChange"
             @pagination:size-change="deplHandleSizeChange"
             @pagination:current-change="deplHandleCurrentChange"
             @sort-change="onDeplSortChange"
-          />
+>
+        <template #empty>
+          <ClusterTableEmpty />
+        </template>
+          </ArtTable>
         </ElTabPane>
 
         <!-- ── StatefulSet Tab ── -->
@@ -139,11 +143,15 @@
             :data="stsData"
             :columns="stsVisibleColumns"
             :pagination="stsPagination"
-            :pagination-options="{ align: 'right' }"
+            :pagination-options="CLUSTER_TABLE_PAGINATION_OPTIONS"
             @pagination:size-change="stsHandleSizeChange"
             @pagination:current-change="stsHandleCurrentChange"
             @sort-change="onStsSortChange"
-          />
+>
+        <template #empty>
+          <ClusterTableEmpty />
+        </template>
+          </ArtTable>
         </ElTabPane>
 
         <!-- ── DaemonSet Tab ── -->
@@ -191,11 +199,15 @@
             :data="dsData"
             :columns="dsVisibleColumns"
             :pagination="dsPagination"
-            :pagination-options="{ align: 'right' }"
+            :pagination-options="CLUSTER_TABLE_PAGINATION_OPTIONS"
             @pagination:size-change="dsHandleSizeChange"
             @pagination:current-change="dsHandleCurrentChange"
             @sort-change="onDsSortChange"
-          />
+>
+        <template #empty>
+          <ClusterTableEmpty />
+        </template>
+          </ArtTable>
         </ElTabPane>
 
         <!-- ── Job Tab ── -->
@@ -262,12 +274,16 @@
             :data="jobData"
             :columns="jobVisibleColumns"
             :pagination="jobPagination"
-            :pagination-options="{ align: 'right' }"
+            :pagination-options="CLUSTER_TABLE_PAGINATION_OPTIONS"
             @selection-change="onJobSelectionChange"
             @pagination:size-change="jobHandleSizeChange"
             @pagination:current-change="jobHandleCurrentChange"
             @sort-change="onJobSortChange"
-          />
+>
+        <template #empty>
+          <ClusterTableEmpty />
+        </template>
+          </ArtTable>
         </ElTabPane>
 
         <!-- ── CronJob Tab ── -->
@@ -313,11 +329,15 @@
             :data="cjData"
             :columns="cjVisibleColumns"
             :pagination="cjPagination"
-            :pagination-options="{ align: 'right' }"
+            :pagination-options="CLUSTER_TABLE_PAGINATION_OPTIONS"
             @pagination:size-change="cjHandleSizeChange"
             @pagination:current-change="cjHandleCurrentChange"
             @sort-change="onCjSortChange"
-          />
+>
+        <template #empty>
+          <ClusterTableEmpty />
+        </template>
+          </ArtTable>
         </ElTabPane>
 
         <ElTabPane v-if="props.showNodeStatusTab" label="状态" name="nodeStatus">
@@ -568,6 +588,15 @@
     </ElDialog>
 
     <PodRemoteWebshell ref="podRemoteWebshellRef" />
+
+    <WorkloadImageManageDialog
+      v-model="imageDialog.visible"
+      :cluster="imageDialog.cluster"
+      :namespace="imageDialog.namespace"
+      :name="imageDialog.name"
+      :kind="imageDialog.kind"
+      @updated="onImageDialogUpdated"
+    />
   </div>
 </template>
 
@@ -603,6 +632,8 @@
     type ButtonMoreItem
   } from '@/components/core/forms/art-button-more/index.vue'
   import { computed, h, ref, watch, inject } from 'vue'
+import { CLUSTER_TABLE_PAGINATION_OPTIONS } from './constants/table'
+import ClusterTableEmpty from './components/cluster-table-empty.vue'
   import { useRoute, useRouter } from 'vue-router'
   import { useTable } from '@/hooks/core/useTable'
   import {
@@ -615,6 +646,9 @@
   } from '@/api/kubernetes/deployment'
   import { deleteK8sPod, fetchK8sPod, type K8sPod } from '@/api/kubernetes/pod'
   import PodRemoteWebshell from './components/pod-remote-webshell.vue'
+  import WorkloadImageManageDialog, {
+    type WorkloadImageKind
+  } from './components/workload-image-manage-dialog.vue'
   import { kubeProxyAxios } from '@/api/kubeProxy'
   import {
     fetchK8sStatefulSetList,
@@ -1440,6 +1474,7 @@
                     h(ArtButtonMore, {
                       list: [
                         { key: 'yaml', label: '查看YAML', icon: 'ri:file-code-line' },
+                        { key: 'images', label: '镜像管理', icon: 'ri:docker-line' },
                         { key: 'redeploy', label: '重新部署', icon: 'ri:refresh-line' },
                         {
                           key: 'delete',
@@ -1768,6 +1803,7 @@
                       h(ArtButtonMore, {
                         list: [
                           { key: 'redeploy', label: '重新部署', icon: 'ri:refresh-line' },
+                          { key: 'images', label: '镜像管理', icon: 'ri:docker-line' },
                           {
                             key: 'delete',
                             label: '删除',
@@ -3226,6 +3262,7 @@
                       list: [
                         { key: 'redeploy', label: '重新部署', icon: 'ri:refresh-line' },
                         { key: 'yaml', label: '编辑YAML', icon: 'ri:file-code-line' },
+                        { key: 'images', label: '镜像管理', icon: 'ri:docker-line' },
                         {
                           key: 'delete',
                           label: '删除',
@@ -3724,6 +3761,36 @@
     }
   }
 
+  const imageDialog = ref<{
+    visible: boolean
+    cluster: string
+    namespace: string
+    name: string
+    kind: WorkloadImageKind
+  }>({
+    visible: false,
+    cluster: '',
+    namespace: '',
+    name: '',
+    kind: 'deploy'
+  })
+
+  function openWorkloadImageDialog(namespace: string, name: string, kind: WorkloadImageKind) {
+    const cluster = String(route.query.cluster ?? '')
+    if (!cluster || !namespace || !name) {
+      ElMessage.warning('资源信息不完整')
+      return
+    }
+    imageDialog.value = { visible: true, cluster, namespace, name, kind }
+  }
+
+  function onImageDialogUpdated() {
+    const kind = imageDialog.value.kind
+    if (kind === 'deploy') onDeplRefresh()
+    else if (kind === 'sts') onStsRefresh()
+    else onDsRefresh()
+  }
+
   function openWorkloadUpdate(
     namespace: string,
     name: string,
@@ -3746,6 +3813,9 @@
       case 'yaml':
         void openYamlDialog(row)
         break
+      case 'images':
+        openWorkloadImageDialog(row.metadata?.namespace ?? '', row.metadata?.name ?? '', 'deploy')
+        break
     }
   }
 
@@ -3753,6 +3823,9 @@
     switch (item.key) {
       case 'yaml':
         void openSharedYamlDialog('sts', row.metadata?.namespace ?? '', row.metadata?.name ?? '')
+        break
+      case 'images':
+        openWorkloadImageDialog(row.metadata?.namespace ?? '', row.metadata?.name ?? '', 'sts')
         break
       case 'redeploy':
         void redeployStatefulSet(row)
@@ -3794,6 +3867,9 @@
     switch (item.key) {
       case 'yaml':
         void openSharedYamlDialog('ds', row.metadata?.namespace ?? '', row.metadata?.name ?? '')
+        break
+      case 'images':
+        openWorkloadImageDialog(row.metadata?.namespace ?? '', row.metadata?.name ?? '', 'ds')
         break
       case 'redeploy':
         void redeployDaemonSet(row)
@@ -3905,7 +3981,7 @@
     else if (kind.value === 'ds') getDsData()
     else if (kind.value === 'job') getJobData()
     else if (kind.value === 'cj') getCjData()
-  })
+  }, { immediate: true })
 
   watch(
     () => String(route.query.cluster ?? ''),

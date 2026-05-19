@@ -634,6 +634,7 @@
   import { computed, h, ref, watch, inject } from 'vue'
 import { CLUSTER_TABLE_PAGINATION_OPTIONS } from './constants/table'
 import ClusterTableEmpty from './components/cluster-table-empty.vue'
+  import { buildClusterRouteQuery } from '@/utils/navigation/cluster-query'
   import { useRoute, useRouter } from 'vue-router'
   import { useTable } from '@/hooks/core/useTable'
   import {
@@ -1017,7 +1018,7 @@ import ClusterTableEmpty from './components/cluster-table-empty.vue'
   function openWorkloadDetail(path: string, namespace: string, name: string) {
     router.push({
       path,
-      query: { cluster: String(route.query.cluster ?? ''), namespace, name }
+      query: buildClusterRouteQuery(route, { namespace, name })
     })
   }
 
@@ -1118,12 +1119,7 @@ import ClusterTableEmpty from './components/cluster-table-empty.vue'
           onClick: () =>
             router.push({
               path: detailPath,
-              query: {
-                cluster: String(route.query.cluster ?? ''),
-                namespace,
-                name,
-                tab: 'events'
-              }
+              query: buildClusterRouteQuery(route, { namespace, name, tab: 'events' })
             })
         },
         () => '查看事件列表'
@@ -2741,13 +2737,12 @@ import ClusterTableEmpty from './components/cluster-table-empty.vue'
                         onClick: () =>
                           router.push({
                             path: '/container/workload-update',
-                            query: {
-                              cluster: String(route.query.cluster ?? ''),
+                            query: buildClusterRouteQuery(route, {
                               namespace: row.metadata?.namespace ?? '',
                               name: row.metadata?.name ?? '',
                               kind: 'cj',
                               mode: 'schedule'
-                            }
+                            })
                           })
                       },
                       () => '修改定时规则'
@@ -3465,11 +3460,10 @@ import ClusterTableEmpty from './components/cluster-table-empty.vue'
     const namespace = globalNamespace.value || nsOptions.value[0] || ''
     router.push({
       path: '/container/deployment-create',
-      query: {
-        cluster,
+      query: buildClusterRouteQuery(route, {
         ...(namespace ? { namespace } : {}),
         tab: 'deploy'
-      }
+      })
     })
   }
 
@@ -3482,11 +3476,10 @@ import ClusterTableEmpty from './components/cluster-table-empty.vue'
     const namespace = globalNamespace.value || nsOptions.value[0] || ''
     router.push({
       path: '/container/statefulset-create',
-      query: {
-        cluster,
+      query: buildClusterRouteQuery(route, {
         ...(namespace ? { namespace } : {}),
         tab: 'sts'
-      }
+      })
     })
   }
 
@@ -3499,11 +3492,10 @@ import ClusterTableEmpty from './components/cluster-table-empty.vue'
     const namespace = globalNamespace.value || nsOptions.value[0] || ''
     router.push({
       path: '/container/daemonset-create',
-      query: {
-        cluster,
+      query: buildClusterRouteQuery(route, {
         ...(namespace ? { namespace } : {}),
         tab: 'ds'
-      }
+      })
     })
   }
 
@@ -3516,11 +3508,10 @@ import ClusterTableEmpty from './components/cluster-table-empty.vue'
     const namespace = globalNamespace.value || nsOptions.value[0] || ''
     router.push({
       path: '/container/job-create',
-      query: {
-        cluster,
+      query: buildClusterRouteQuery(route, {
         ...(namespace ? { namespace } : {}),
         tab: 'job'
-      }
+      })
     })
   }
 
@@ -3533,11 +3524,10 @@ import ClusterTableEmpty from './components/cluster-table-empty.vue'
     const namespace = globalNamespace.value || nsOptions.value[0] || ''
     router.push({
       path: '/container/cronjob-create',
-      query: {
-        cluster,
+      query: buildClusterRouteQuery(route, {
         ...(namespace ? { namespace } : {}),
         tab: 'cj'
-      }
+      })
     })
   }
 
@@ -3798,7 +3788,7 @@ import ClusterTableEmpty from './components/cluster-table-empty.vue'
   ) {
     router.push({
       path: '/container/workload-update',
-      query: { cluster: String(route.query.cluster ?? ''), namespace, name, kind }
+      query: buildClusterRouteQuery(route, { namespace, name, kind })
     })
   }
 

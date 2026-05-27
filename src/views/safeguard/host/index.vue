@@ -141,12 +141,13 @@
 </template>
 
 <script setup lang="ts">
-  import { h, nextTick, onActivated, reactive, ref } from 'vue'
+  import { h, nextTick, reactive, ref } from 'vue'
   import { CopyDocument } from '@element-plus/icons-vue'
   import { ElLink, ElMessage, ElMessageBox } from 'element-plus'
   import type { FormInstance, FormRules } from 'element-plus'
   import ArtButtonMore, { type ButtonMoreItem } from '@/components/core/forms/art-button-more/index.vue'
   import { useTable } from '@/hooks/core/useTable'
+  import { useSkipFirstActivatedRefresh } from '@/hooks/core/useSkipFirstActivatedRefresh'
   import {
     fetchCreatePixiuNode,
     fetchDeletePixiuNode,
@@ -598,9 +599,7 @@
     await refreshData()
   }
 
-  onActivated(() => {
-    void refreshData()
-  })
+  useSkipFirstActivatedRefresh(refreshData)
 </script>
 
 <style>

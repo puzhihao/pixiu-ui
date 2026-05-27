@@ -641,6 +641,7 @@
   import { buildClusterRouteQuery } from '@/utils/navigation/cluster-query'
   import { useRoute, useRouter } from 'vue-router'
   import { useTable } from '@/hooks/core/useTable'
+  import { useSkipFirstActivatedRefresh } from '@/hooks/core/useSkipFirstActivatedRefresh'
   import {
     fetchK8sDeploymentList,
     fetchK8sDeployment,
@@ -674,6 +675,7 @@
     fetchK8sJob,
     deleteK8sJob,
     createK8sJob,
+    rerunK8sJob,
     type K8sJob
   } from '@/api/kubernetes/job'
   import {
@@ -2309,7 +2311,7 @@
               {
                 prop: 'operation',
                 label: '操作',
-                minWidth: 120,
+                minWidth: 200,
                 fixed: 'right',
                 formatter: (row: K8sJob) =>
                   h('div', { class: 'workloads-op-cell' }, [
@@ -2343,22 +2345,17 @@
                       },
                       () => '日志'
                     ),
-                    h(
-                      ElLink,
-                      {
-                        type: 'primary',
-                        underline: 'never',
-                        style: 'font-size:12px',
-                        onClick: () =>
-                          void deleteWorkload(
-                            'job',
-                            row.metadata?.namespace ?? '',
-                            row.metadata?.name ?? '',
-                            onJobRefresh
-                          )
-                      },
-                      () => '删除'
-                    )
+                    h(ArtButtonMore, {
+                      list: [
+                        { key: 'rerun', label: '重新执行', icon: 'ri:refresh-line' },
+                        {
+                          key: 'delete',
+                          label: '删除',
+                          icon: 'ri:delete-bin-4-line'
+                        }
+                      ],
+                      onClick: (item: ButtonMoreItem) => jobMoreClick(item, row)
+                    })
                   ])
               }
             ]
@@ -2912,7 +2909,7 @@
     refreshData: refreshDeplData
   } = useTable({
     core: {
-      immediate: true,
+      immediate: false,
       apiFn: async (params: DeplParams) => {
         const cluster = String(route.query.cluster ?? '')
         if (!cluster) {
@@ -3881,6 +3878,50 @@
     }
   }
 
+  function jobMoreClick(item: ButtonMoreItem, row: K8sJob) {
+    switch (item.key) {
+      case 'rerun':
+        void confirmRerunJob(row)
+        break
+      case 'delete':
+        void deleteWorkload(
+          'job',
+          row.metadata?.namespace ?? '',
+          row.metadata?.name ?? '',
+          onJobRefresh
+        )
+        break
+    }
+  }
+
+  async function confirmRerunJob(row: K8sJob) {
+    const cluster = String(route.query.cluster ?? '')
+    const ns = row.metadata?.namespace ?? ''
+    const name = row.metadata?.name ?? ''
+    const resourceVersion = row.metadata?.resourceVersion ?? ''
+    if (!cluster || !ns || !name) {
+      ElMessage.warning('Job 信息不完整')
+      return
+    }
+    if (!resourceVersion) {
+      ElMessage.warning('缺少 resourceVersion，无法重新执行')
+      return
+    }
+    try {
+      await ElMessageBox.confirm(`确认重新执行 Job「${name}」?`, '重新执行', {
+        type: 'warning',
+        confirmButtonText: '确认',
+        cancelButtonText: '取消'
+      })
+      await rerunK8sJob(cluster, ns, name, resourceVersion)
+      ElMessage.success('已触发重新执行')
+      onJobRefresh()
+    } catch (e: unknown) {
+      if (e === 'cancel') return
+      ElMessage.error(e instanceof Error ? e.message : '重新执行失败')
+    }
+  }
+
   function stsMoreClick(item: ButtonMoreItem, row: K8sStatefulSet) {
     switch (item.key) {
       case 'logs':
@@ -4048,7 +4089,7 @@
     }
   }
 
-  // ── Global namespace watch ──
+  // ── Global namespace watch（非 immediate：首屏由 kind watch 拉数） ──
   watch(globalNamespace, (ns) => {
     const nsVal = ns || undefined
     if (!props.deployNamespace) {
@@ -4064,7 +4105,7 @@
     else if (kind.value === 'ds') getDsData()
     else if (kind.value === 'job') getJobData()
     else if (kind.value === 'cj') getCjData()
-  }, { immediate: true })
+  })
 
   watch(
     () => String(route.query.cluster ?? ''),
@@ -4114,7 +4155,17 @@
       }
       const cluster = String(route.query.cluster ?? '')
       if (!cluster) return
-      if (val === 'sts') getStsData()
+      const nsVal = globalNamespace.value || undefined
+      if (!props.deployNamespace) {
+        deplNamespace.value = globalNamespace.value || ''
+      }
+      replaceDeplSearchParams({ namespace: getDeplNamespaceParam() || nsVal })
+      replaceStsSearchParams({ namespace: nsVal })
+      replaceDsSearchParams({ namespace: nsVal })
+      replaceJobSearchParams({ namespace: nsVal })
+      replaceCjSearchParams({ namespace: nsVal })
+      if (val === 'deploy') getDeplData()
+      else if (val === 'sts') getStsData()
       else if (val === 'ds') {
         if (props.dsDataMode === 'logs') {
           void loadDsLogPods()
@@ -4126,6 +4177,16 @@
     },
     { immediate: true }
   )
+
+  function refreshActiveWorkloadTab() {
+    if (kind.value === 'deploy') refreshDeplData()
+    else if (kind.value === 'sts') refreshStsData()
+    else if (kind.value === 'ds') refreshDsData()
+    else if (kind.value === 'job') refreshJobData()
+    else if (kind.value === 'cj') refreshCjData()
+  }
+
+  useSkipFirstActivatedRefresh(refreshActiveWorkloadTab)
 
   // 父组件异步加载 workload 后 mirrorSelector 才会就绪，需补调一次 loadDsLogPods
   watch(

@@ -33,6 +33,28 @@ export const systemRoutes: AppRouteRecord = {
       }
     },
     {
+      path: 'tenant',
+      name: 'Tenant',
+      component: '/system/tenant',
+      meta: {
+        title: 'menus.system.tenant',
+        icon: 'ri:building-line',
+        keepAlive: true,
+        roles: ['R_SUPER']
+      }
+    },
+    {
+      path: 'api',
+      name: 'ApiManage',
+      component: '/system/api',
+      meta: {
+        title: 'menus.system.api',
+        icon: 'ri:links-line',
+        keepAlive: true,
+        roles: ['R_SUPER']
+      }
+    },
+    {
       path: 'user-center',
       name: 'UserCenter',
       component: '/system/user-center',
@@ -42,22 +64,6 @@ export const systemRoutes: AppRouteRecord = {
         isHide: true,
         keepAlive: true,
         isHideTab: true
-      }
-    },
-    {
-      path: 'menu',
-      name: 'Menus',
-      component: '/system/menu',
-      meta: {
-        title: 'menus.system.menu',
-        icon: 'ri:menu-line',
-        keepAlive: true,
-        roles: ['R_SUPER'],
-        authList: [
-          { title: '新增', authMark: 'add' },
-          { title: '编辑', authMark: 'edit' },
-          { title: '删除', authMark: 'delete' }
-        ]
       }
     }
   ]

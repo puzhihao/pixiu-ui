@@ -8,7 +8,7 @@
         </ElButton>
         <ElDivider direction="vertical" class="deploy-create-header-divider" />
         <ElBreadcrumb separator="/">
-          <ElBreadcrumbItem :to="{ path: '/container/cluster' }">集群管理</ElBreadcrumbItem>
+          <ElBreadcrumbItem :to="{ path: '/container/plan' }">部署</ElBreadcrumbItem>
           <ElBreadcrumbItem>{{ pageTitle }}</ElBreadcrumbItem>
         </ElBreadcrumb>
         <template v-if="hasPlanId && !isCopyMode">
@@ -359,11 +359,7 @@
   }
 
   function goBack() {
-    if (isDetailMode.value || isEditMode.value || isCopyMode.value) {
-      router.push('/container/plan')
-    } else {
-      router.push('/container/cluster')
-    }
+    router.push('/container/plan')
   }
 
   function goEdit() {

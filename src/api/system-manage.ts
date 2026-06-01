@@ -297,6 +297,7 @@ interface PixiuAPIResource {
   method: string
   path: string
   group?: string
+  sub_group?: string
   description?: string
   gmt_create?: string
   gmt_modified?: string
@@ -323,6 +324,45 @@ export async function fetchUpdateRoleAPIs(roleId: number, apiIds: number[]): Pro
   const res = await pixiuAxios.put(`/pixiu/roles/${roleId}/apis`, { api_ids: apiIds })
   const { code, message } = res.data
   if (code !== 200) throw new Error(message || '更新角色 API 权限失败')
+}
+
+export interface RoleAPIScopeRecord {
+  api_id: number
+  cluster: string
+  namespace: string
+  resource_name: string
+}
+
+export interface RoleAPIScopesResult {
+  scopes: RoleAPIScopeRecord[]
+  apis: PixiuAPIResource[]
+}
+
+export interface UpdateRoleAPIScopesPayload {
+  scopes?: RoleAPIScopeRecord[]
+  add_scopes?: RoleAPIScopeRecord[]
+  remove_scopes?: RoleAPIScopeRecord[]
+}
+
+export async function fetchGetRoleAPIScopes(roleId: number): Promise<RoleAPIScopesResult> {
+  const res = await pixiuAxios.get(`/pixiu/roles/${roleId}/api-scopes`)
+  const { code, result, message } = res.data
+  if (code !== 200) throw new Error(message || '获取角色 Kubernetes 权限失败')
+
+  const payload = (result || {}) as RoleAPIScopesResult
+  return {
+    scopes: payload.scopes || [],
+    apis: payload.apis || []
+  }
+}
+
+export async function fetchUpdateRoleAPIScopes(
+  roleId: number,
+  payload: UpdateRoleAPIScopesPayload
+): Promise<void> {
+  const res = await pixiuAxios.put(`/pixiu/roles/${roleId}/api-scopes`, payload)
+  const { code, message } = res.data
+  if (code !== 200) throw new Error(message || '更新角色 Kubernetes 权限失败')
 }
 
 interface PixiuTenantItem {
@@ -417,6 +457,7 @@ interface PixiuAPIItem {
   method: string
   path: string
   group?: string
+  sub_group?: string
   description?: string
   gmt_create?: string
   gmt_modified?: string
@@ -436,6 +477,7 @@ function mapPixiuAPIItem(item: PixiuAPIItem): Api.SystemManage.APIListItem {
     method: item.method || '',
     path: item.path || '',
     group: item.group || '',
+    subGroup: item.sub_group || '',
     description: item.description || '',
     createTime: formatDateTime(item.gmt_create),
     updateTime: formatDateTime(item.gmt_modified)
@@ -473,6 +515,7 @@ export async function fetchCreateAPI(params: {
   method: string
   path: string
   group?: string
+  subGroup?: string
   description?: string
 }): Promise<void> {
   const body: Record<string, unknown> = {
@@ -480,6 +523,7 @@ export async function fetchCreateAPI(params: {
     path: params.path
   }
   if (params.group) body.group = params.group
+  if (params.subGroup) body.sub_group = params.subGroup
   if (params.description) body.description = params.description
   const res = await pixiuAxios.post('/pixiu/apis', body)
   const { code, message } = res.data
@@ -492,6 +536,7 @@ export async function fetchUpdateAPI(params: {
   method?: string
   path?: string
   group?: string
+  subGroup?: string
   description?: string
 }): Promise<void> {
   const body: Record<string, unknown> = {
@@ -500,6 +545,7 @@ export async function fetchUpdateAPI(params: {
   if (params.method) body.method = params.method
   if (params.path) body.path = params.path
   if (params.group !== undefined) body.group = params.group
+  if (params.subGroup !== undefined) body.sub_group = params.subGroup
   if (params.description !== undefined) body.description = params.description
   const res = await pixiuAxios.put(`/pixiu/apis/${params.id}`, body)
   const { code, message } = res.data

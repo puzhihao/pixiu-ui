@@ -40,6 +40,7 @@
       <RoleApiDialog
         v-model:visible="apiDialogVisible"
         :role-data="currentRoleData"
+        :mode="apiDialogMode"
         @success="refreshData"
       />
     </ElCard>
@@ -152,7 +153,7 @@
         {
           prop: 'operation',
           label: '操作',
-          width: 200,
+          width: 180,
           fixed: 'right',
           formatter: (row) =>
             h('div', { style: 'display:flex;align-items:center;gap:12px;flex-wrap:nowrap' }, [
@@ -162,9 +163,9 @@
                   type: 'primary',
                   underline: 'never',
                   style: 'font-size:12px',
-                  onClick: () => showApiDialog(row)
+                  onClick: () => showDialog('edit', row)
                 },
-                () => '修改权限'
+                () => '编辑'
               ),
               h(
                 ElLink,
@@ -172,9 +173,9 @@
                   type: 'primary',
                   underline: 'never',
                   style: 'font-size:12px',
-                  onClick: () => showDialog('edit', row)
+                  onClick: () => showApiDialog(row)
                 },
-                () => '编辑'
+                () => '修改权限'
               ),
               h(
                 ElLink,
@@ -205,7 +206,8 @@
     })
   }
 
-  const showApiDialog = (row: RoleListItem): void => {
+  const showApiDialog = (row: RoleListItem, mode: 'api' | 'kubernetes' = 'api'): void => {
+    apiDialogMode.value = mode
     currentRoleData.value = row
     nextTick(() => {
       apiDialogVisible.value = true

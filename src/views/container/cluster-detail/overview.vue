@@ -88,11 +88,7 @@
         </ElRow>
 
         <section class="section-title mt-6">用量概览（近 24 小时）</section>
-        <ElCard
-          v-loading="usageOverviewInitialLoading"
-          shadow="never"
-          class="usage-overview-card"
-        >
+        <ElCard v-loading="usageOverviewInitialLoading" shadow="never" class="usage-overview-card">
           <div class="usage-overview-grid">
             <MetricChartPanel
               title="CPU 利用率（%）"
@@ -214,7 +210,9 @@
                         disabled
                         size="small"
                       />
-                      <span class="info-dl__switch-text">{{ clusterDetail.haMode === 'ha' ? '已开启' : '未开启' }}</span>
+                      <span class="info-dl__switch-text">{{
+                        clusterDetail.haMode === 'ha' ? '已开启' : '未开启'
+                      }}</span>
                     </dd>
                   </div>
                   <div class="info-dl__row">
@@ -237,7 +235,9 @@
                   </div>
                   <div class="info-dl__row">
                     <dt>容器运行时</dt>
-                    <dd>{{ planDetail?.config?.runtime?.runtime || clusterDetail.containerRuntime }}</dd>
+                    <dd>{{
+                      planDetail?.config?.runtime?.runtime || clusterDetail.containerRuntime
+                    }}</dd>
                   </div>
                   <div class="info-dl__row">
                     <dt>集群描述</dt>
@@ -270,7 +270,9 @@
                   </div>
                   <div class="info-dl__row">
                     <dt>Service IP 段</dt>
-                    <dd>{{ planDetail?.config?.network?.service_network || basicNetwork.serviceCidr }}</dd>
+                    <dd>{{
+                      planDetail?.config?.network?.service_network || basicNetwork.serviceCidr
+                    }}</dd>
                   </div>
                   <div class="info-dl__row">
                     <dt>容器网络</dt>
@@ -278,7 +280,9 @@
                   </div>
                   <div class="info-dl__row">
                     <dt>kube-proxy 转发模式</dt>
-                    <dd>{{ planDetail?.config?.network?.network_interface || clusterDetail.kubeProxyMode }}</dd>
+                    <dd>{{
+                      planDetail?.config?.network?.network_interface || clusterDetail.kubeProxyMode
+                    }}</dd>
                   </div>
                 </dl>
               </ElCol>
@@ -301,7 +305,7 @@
                         class="info-dl__copy"
                         @click="copyText(basicNetwork.clusterDns)"
                       >
-                        <ArtSvgIcon icon="ri:file-copy-line" style="font-size:13px" />
+                        <ArtSvgIcon icon="ri:file-copy-line" style="font-size: 13px" />
                       </ElButton>
                     </dd>
                   </div>
@@ -332,27 +336,6 @@
         <div class="basic-panel">
           <ElCard shadow="never" class="basic-info-card">
             <template #header>
-              <span class="basic-info-card__title">集群 APIServer 信息</span>
-            </template>
-            <div class="info-dl">
-              <div class="info-dl__row">
-                <dt>访问地址</dt>
-                <dd>
-                  <span>{{ apiServerAddr }}</span>
-                  <ElButton
-                    link
-                    class="info-dl__copy"
-                    @click="copyText(apiServerAddr)"
-                  >
-                    <ArtSvgIcon icon="ri:file-copy-line" style="font-size:13px" />
-                  </ElButton>
-                </dd>
-              </div>
-            </div>
-          </ElCard>
-
-          <ElCard shadow="never" class="basic-info-card mt-2">
-            <template #header>
               <span class="basic-info-card__title">用户说明</span>
             </template>
             <div class="info-dl">
@@ -363,39 +346,65 @@
               <div class="info-dl__row">
                 <dt>操作指引</dt>
                 <dd>
-                  <span>请将 Kubeconfig 文件放置于本地 {{ kubeconfigPath }}，或通过环境变量 export KUBECONFIG 指定路径。</span>
-                  <ElButton
-                    link
-                    class="info-dl__copy"
-                    @click="copyText(kubeconfigPath)"
+                  <span
+                    >请将 Kubeconfig 文件放置于本地 {{ kubeconfigPathHint }}，或通过环境变量 export
+                    KUBECONFIG 指定路径。</span
                   >
-                    <ArtSvgIcon icon="ri:file-copy-line" style="font-size:13px" />
+                  <ElButton link class="info-dl__copy" @click="copyText(kubeconfigPathHint)">
+                    <ArtSvgIcon icon="ri:file-copy-line" style="font-size: 13px" />
                   </ElButton>
                 </dd>
               </div>
             </div>
           </ElCard>
-        </div>
-      </ElTabPane>
 
-      <ElTabPane label="KubeConfig" name="kubeconfig">
-        <div class="basic-panel">
-          <ElCard shadow="never" class="basic-info-card">
+          <ElCard shadow="never" class="basic-info-card mt-2">
             <template #header>
-              <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; justify-content: space-between">
                 <span class="basic-info-card__title">集群 KubeConfig</span>
                 <div class="kubeconfig-actions">
-                  <ElLink type="primary" underline="never" class="kubeconfig-action" @click="copyKubeconfig">
+                  <ElLink
+                    v-if="!kubeconfigVisible"
+                    type="primary"
+                    underline="never"
+                    class="kubeconfig-action"
+                    @click="kubeconfigVisible = true"
+                  >
+                    显示
+                  </ElLink>
+                  <ElLink
+                    v-else
+                    type="primary"
+                    underline="never"
+                    class="kubeconfig-action"
+                    @click="kubeconfigVisible = false"
+                  >
+                    隐藏
+                  </ElLink>
+                  <ElLink
+                    type="primary"
+                    underline="never"
+                    class="kubeconfig-action"
+                    @click="copyKubeconfig"
+                  >
                     拷贝
                   </ElLink>
-                  <ElLink type="primary" underline="never" class="kubeconfig-action" @click="downloadKubeconfig">
+                  <ElLink
+                    type="primary"
+                    underline="never"
+                    class="kubeconfig-action"
+                    @click="downloadKubeconfig"
+                  >
                     下载
                   </ElLink>
                 </div>
               </div>
             </template>
             <div v-loading="kubeconfigLoading" class="kubeconfig-body">
-              <pre v-if="kubeconfigContent" class="kubeconfig-pre">{{ kubeconfigContent }}</pre>
+              <pre v-if="kubeconfigContent && kubeconfigVisible" class="kubeconfig-pre">{{
+                kubeconfigContent
+              }}</pre>
+              <div v-else-if="kubeconfigContent" class="kubeconfig-hidden">KubeConfig 内容已隐藏</div>
               <ElEmpty v-else description="暂无 KubeConfig 内容" :image-size="80" />
             </div>
           </ElCard>
@@ -409,12 +418,10 @@
   import { ElMessage } from 'element-plus'
   import { inject, computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
-  import yaml from 'js-yaml'
   import {
     decodeKubeConfigBase64,
     fetchProtectCluster,
     fetchUpdateClusterAlias,
-    fetchGetCluster,
     fetchClusterByName,
     fetchGetClusterKubeconfig,
     type KubeconfigResponse
@@ -448,12 +455,16 @@
   const OVERVIEW_ROUTE_NAME = 'ClusterDetailOverview'
   const isOverviewRoute = computed(() => route.name === OVERVIEW_ROUTE_NAME)
 
-  const OVERVIEW_TAB_NAMES = new Set(['main', 'basic', 'api', 'kubeconfig'])
+  const OVERVIEW_TAB_NAMES = new Set(['main', 'basic', 'api'])
 
   watch(
     () => route.query.overviewTab,
     (raw) => {
       const t = Array.isArray(raw) ? raw[0] : raw
+      if (typeof t === 'string' && t === 'kubeconfig') {
+        innerTab.value = 'api'
+        return
+      }
       innerTab.value = typeof t === 'string' && OVERVIEW_TAB_NAMES.has(t) ? t : 'main'
     },
     { immediate: true }
@@ -541,29 +552,33 @@
       basicLoading.value = false
     }
 
-    fetchClusterDetailInfo(cluster, undefined).then(detail => {
-      clusterDetail.value = detail
-    }).catch(() => {})
+    fetchClusterDetailInfo(cluster, undefined)
+      .then((detail) => {
+        clusterDetail.value = detail
+      })
+      .catch(() => {})
 
     if (ctx.value.clusterType === 1 && ctx.value.planId) {
       planLoading.value = true
-      fetchPlanWithResources(ctx.value.planId).then(plan => {
-        planDetail.value = plan
-      }).catch(() => {
-        planDetail.value = null
-      }).finally(() => {
-        planLoading.value = false
-      })
+      fetchPlanWithResources(ctx.value.planId)
+        .then((plan) => {
+          planDetail.value = plan
+        })
+        .catch(() => {
+          planDetail.value = null
+        })
+        .finally(() => {
+          planLoading.value = false
+        })
     }
   }
 
-  const kubeconfigPath = computed(() => `~/.kube/${ctx.value.name || 'config'}`)
-  const apiServerAddr = ref('加载中...')
-  const loadedApiCluster = ref('')
+  const kubeconfigPathHint = '~/.kube/<下载的kubeconfig>'
 
   // Kubeconfig 相关状态
   const kubeconfigLoading = ref(false)
   const kubeconfigContent = ref('')
+  const kubeconfigVisible = ref(false)
   const kubeconfigData = ref<KubeconfigResponse | null>(null)
   const loadedKubeconfigCluster = ref('')
 
@@ -590,6 +605,7 @@
 
     kubeconfigLoading.value = true
     kubeconfigContent.value = ''
+    kubeconfigVisible.value = false
     try {
       const clusterId = await resolveClusterId()
       if (!clusterId) {
@@ -622,7 +638,7 @@
       ElMessage.warning('暂无 Kubeconfig 内容')
       return
     }
-    
+
     const fileName = `${kubeconfigData.value?.cluster_name || ctx.value.name || 'kubeconfig'}.yaml`
     const blob = new Blob([kubeconfigContent.value], { type: 'text/yaml' })
     const url = URL.createObjectURL(blob)
@@ -631,47 +647,6 @@
     a.download = fileName
     a.click()
     URL.revokeObjectURL(url)
-  }
-
-  function parseKubeConfigServer(kcText: string): string {
-    if (!kcText) return ''
-    try {
-      const kc = yaml.load(kcText) as { clusters?: Array<{ cluster?: { server?: string } }> }
-      return kc?.clusters?.[0]?.cluster?.server ?? ''
-    } catch {
-      // fallback to regex for malformed yaml
-      const match = kcText.match(/server:\s*(\S+)/)
-      return match?.[1] ?? ''
-    }
-  }
-
-  async function loadApiServerInfo() {
-    if (!ctx.value.name) return
-    if (loadedApiCluster.value === ctx.value.name) return
-
-    try {
-      let kcText = ''
-      // 通过集群 ID 获取 kubeconfig
-      if (ctx.value.id) {
-        const cluster = await fetchGetCluster(ctx.value.id)
-        kcText = (cluster as { kube_config?: string }).kube_config ?? ''
-      }
-      // 若 ID 方式获取不到，通过集群名称获取
-      if (!kcText) {
-        const item = await fetchClusterByName(ctx.value.name)
-        if (item?.id) {
-          const cluster = await fetchGetCluster(item.id)
-          kcText = (cluster as { kube_config?: string }).kube_config ?? ''
-        }
-      }
-      const server = parseKubeConfigServer(kcText)
-      if (server) {
-        apiServerAddr.value = server
-        loadedApiCluster.value = ctx.value.name
-      }
-    } catch {
-      // keep default
-    }
   }
 
   const STATUS_MAP = {
@@ -851,13 +826,12 @@
       stopOverviewBackgroundLoads()
     }
     if (tab === 'basic') void loadBasicInfo()
-    if (tab === 'api') void loadApiServerInfo()
-    if (tab === 'kubeconfig') void loadKubeconfig()
+    if (tab === 'api') void loadKubeconfig()
   }
 
   function onTabChange(tabName: string) {
-    if (tabName === 'kubeconfig') {
-      void loadKubeconfig(true) // 强制刷新
+    if (tabName === 'api') {
+      void loadKubeconfig(true)
     }
   }
 
@@ -1178,11 +1152,28 @@
   .kubeconfig-action {
     display: inline-flex;
     align-items: center;
-    font-size: 13px;
+    font-size: 12px;
+  }
+
+  .kubeconfig-action :deep(.el-link__inner) {
+    font-size: 12px;
   }
 
   .kubeconfig-body {
     min-height: 480px;
+  }
+
+  .kubeconfig-hidden {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 440px;
+    padding: 16px;
+    background: var(--el-bg-color-page);
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
   }
 
   .kubeconfig-pre {

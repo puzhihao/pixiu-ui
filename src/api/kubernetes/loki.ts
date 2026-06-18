@@ -62,9 +62,11 @@ export interface LokiAvailabilityResult {
 }
 
 const TOKEN_STORAGE_KEY = 'pixiu-access-token'
+const LOKI_NAMESPACE = 'loki'
+const LOKI_GATEWAY_SERVICE = 'http:loki-distributed-gateway:80'
 
 function getLokiBasePath(cluster: string): string {
-  return `/pixiu/kubeproxy/clusters/${encodeURIComponent(cluster)}/loki/api/v1`
+  return `/pixiu/proxy/${encodeURIComponent(cluster)}/api/v1/namespaces/${encodeURIComponent(LOKI_NAMESPACE)}/services/${encodeURIComponent(LOKI_GATEWAY_SERVICE)}/proxy/loki/api/v1`
 }
 
 function resolveAccessToken(): string {
@@ -149,7 +151,7 @@ function buildSelector(filters: LokiLabelFilter[] = []): string {
     }))
     .filter((item) => item.key && item.value)
 
-  if (!normalized.length) return '{namespace=~".+"}'
+  if (!normalized.length) return ''
 
   const parts = normalized.map(
     (item) => `${item.key}${item.operator}"${escapeLogQlString(item.value)}"`
@@ -160,6 +162,7 @@ function buildSelector(filters: LokiLabelFilter[] = []): string {
 function buildQuery(filters: LokiLabelFilter[] = [], query?: string): string {
   const selector = buildSelector(filters)
   const keyword = (query ?? '').trim()
+  if (!selector) return ''
   return keyword ? `${selector} |= "${escapeLogQlString(keyword)}"` : selector
 }
 

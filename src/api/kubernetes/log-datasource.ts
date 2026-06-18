@@ -27,7 +27,7 @@ export interface LogDatasourceHeader {
 export interface LogDatasourceItem {
   id: number
   resourceVersion: number
-  clusterId: number
+  clusterName: string
   name: string
   type: LogDatasourceType
   url: string
@@ -49,6 +49,10 @@ export interface CreateLogDatasourcePayload {
   headers?: LogDatasourceHeader[]
   is_default?: boolean
   description?: string
+}
+
+export interface UpdateLogDatasourcePayload extends CreateLogDatasourcePayload {
+  resource_version: number
 }
 
 export interface LogDatasourceAvailabilityResult {
@@ -179,8 +183,8 @@ function buildDatasourceHeaders(payload: TestLogDatasourcePayload): Record<strin
   return headers
 }
 
-function getLogDatasourceBasePath(clusterId: number | string): string {
-  return `/pixiu/clusters/${encodeURIComponent(String(clusterId))}/log-datasources`
+function getLogDatasourceBasePath(clusterName: string): string {
+  return `/pixiu/log-datasources/${encodeURIComponent(clusterName)}`
 }
 
 function normalizeDatasourceType(value: unknown): LogDatasourceType {
@@ -210,7 +214,7 @@ function toDatasourceItem(payload: unknown): LogDatasourceItem | null {
   return {
     id,
     resourceVersion: Number(item.resource_version ?? item.resourceVersion ?? 0),
-    clusterId: Number(item.cluster_id ?? item.clusterId ?? 0),
+    clusterName: String(item.cluster_name ?? item.clusterName ?? ''),
     name: String(item.name ?? ''),
     type: normalizeDatasourceType(item.type),
     url: String(item.url ?? ''),
@@ -229,45 +233,45 @@ export function getDatasourceTypeLabel(type: LogDatasourceType): string {
   return matched?.label || type
 }
 
-export async function listLogDatasources(clusterId: number | string): Promise<LogDatasourceItem[]> {
+export async function listLogDatasources(clusterName: string): Promise<LogDatasourceItem[]> {
   const { data } = await silentPixiuAxios.get<PixiuEnvelope<unknown[]>>(
-    getLogDatasourceBasePath(clusterId)
+    getLogDatasourceBasePath(clusterName)
   )
   const result = Array.isArray(data?.result) ? data.result : []
   return result.map(toDatasourceItem).filter((item): item is LogDatasourceItem => Boolean(item))
 }
 
 export async function createLogDatasource(
-  clusterId: number | string,
+  clusterName: string,
   payload: CreateLogDatasourcePayload
 ): Promise<void> {
-  await pixiuAxios.post(getLogDatasourceBasePath(clusterId), payload)
+  await pixiuAxios.post(getLogDatasourceBasePath(clusterName), payload)
 }
 
 export async function updateLogDatasource(
-  clusterId: number | string,
+  clusterName: string,
   datasourceId: number | string,
-  payload: CreateLogDatasourcePayload
+  payload: UpdateLogDatasourcePayload
 ): Promise<void> {
   await pixiuAxios.put(
-    `${getLogDatasourceBasePath(clusterId)}/${encodeURIComponent(String(datasourceId))}`,
+    `${getLogDatasourceBasePath(clusterName)}/${encodeURIComponent(String(datasourceId))}`,
     payload
   )
 }
 
 export async function deleteLogDatasource(
-  clusterId: number | string,
+  clusterName: string,
   datasourceId: number | string
 ): Promise<void> {
   await pixiuAxios.delete(
-    `${getLogDatasourceBasePath(clusterId)}/${encodeURIComponent(String(datasourceId))}`
+    `${getLogDatasourceBasePath(clusterName)}/${encodeURIComponent(String(datasourceId))}`
   )
 }
 
 export async function testLogDatasourceConnection(
   payload: TestLogDatasourcePayload
 ): Promise<TestLogDatasourceResult> {
-  if (!payload.clusterId && payload.clusterId !== 0) {
+  if (!payload.clusterName.trim()) {
     return { available: false, reason: '缺少集群信息，无法测试数据源' }
   }
   const normalizedUrl = normalizeLogDatasourceUrl(payload.type, payload.url)
@@ -281,7 +285,7 @@ export async function testLogDatasourceConnection(
 
   try {
     const { data } = await silentPixiuAxios.post<PixiuEnvelope<TestLogDatasourceResult>>(
-      `${getLogDatasourceBasePath(payload.clusterId)}/test`,
+      `${getLogDatasourceBasePath(payload.clusterName)}/test`,
       {
         type: payload.type,
         url: normalizedUrl,
@@ -382,18 +386,18 @@ export async function testLogDatasourceConnection(
 }
 
 export async function setDefaultLogDatasource(
-  clusterId: number | string,
+  clusterName: string,
   datasourceId: number | string
 ): Promise<void> {
   await pixiuAxios.post(
-    `${getLogDatasourceBasePath(clusterId)}/${encodeURIComponent(String(datasourceId))}/default`
+    `${getLogDatasourceBasePath(clusterName)}/${encodeURIComponent(String(datasourceId))}/default`
   )
 }
 
 export async function detectDefaultLogDatasource(
-  clusterId: number | string
+  clusterName: string
 ): Promise<LogDatasourceAvailabilityResult> {
-  const datasourceList = await listLogDatasources(clusterId)
+  const datasourceList = await listLogDatasources(clusterName)
   const datasource = datasourceList.find((item) => item.isDefault) ?? null
 
   if (datasource) {

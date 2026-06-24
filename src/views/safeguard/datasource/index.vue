@@ -59,14 +59,58 @@
   import {
     fetchGetDatasourceList,
     fetchDeleteDatasource,
+    resolveDatasourceUrl,
     type DatasourceItem,
     DatasourceTypeMap,
     DatasourceSubTypeMap
   } from '@/api/datasource'
-  import { PixiuApiError } from '@/api/container'
+  import { PixiuApiError, fetchClusterList } from '@/api/container'
+  import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import DatasourceDrawer from './modules/datasource-drawer.vue'
 
   defineOptions({ name: 'DatasourceManage' })
+
+  const subTypeIconMap: Record<string, { icon: string; color: string }> = {
+    loki: { icon: 'simple-icons:grafana', color: '#F46800' },
+    es: { icon: 'simple-icons:elasticsearch', color: '#005571' },
+    prometheus: { icon: 'simple-icons:prometheus', color: '#E6522C' }
+  }
+
+  function getSubTypeIcon(subType: string) {
+    return subTypeIconMap[subType] ?? { icon: 'ri:database-2-line', color: '#606266' }
+  }
+
+  const clusterAliasMap = ref<Record<string, string>>({})
+  let clusterAliasLoadPromise: Promise<void> | null = null
+
+  function getClusterAlias(clusterName: string): string {
+    if (!clusterName) return '-'
+    return clusterAliasMap.value[clusterName] || clusterName
+  }
+
+  async function loadClusterAliasMap() {
+    if (clusterAliasLoadPromise) return clusterAliasLoadPromise
+    clusterAliasLoadPromise = (async () => {
+      try {
+        const limit = 500
+        let page = 1
+        const map: Record<string, string> = {}
+        let total = 0
+        do {
+          const { items, total: t } = await fetchClusterList({ page, limit })
+          total = t
+          for (const cluster of items) {
+            map[cluster.name] = cluster.aliasName || cluster.name
+          }
+          page++
+        } while ((page - 1) * limit < total)
+        clusterAliasMap.value = map
+      } catch {
+        // 集群列表加载失败时静默处理
+      }
+    })()
+    return clusterAliasLoadPromise
+  }
 
   const searchForm = ref({ nameSelector: undefined as string | undefined })
   const drawerVisible = ref(false)
@@ -93,6 +137,7 @@
   } = useTable({
     core: {
       apiFn: async (params: { current: number; size: number; nameSelector?: string }) => {
+        await loadClusterAliasMap()
         return await fetchGetDatasourceList({
           current: params.current,
           size: params.size,
@@ -108,53 +153,60 @@
         {
           prop: 'name',
           label: '名称',
-          minWidth: 180,
-          formatter: (row: any) =>
-            h('span', { style: { fontSize: '12px' } }, row.name)
+          minWidth: 280,
+          formatter: (row: DatasourceItem) => {
+            const iconMeta = getSubTypeIcon(row.subType)
+            const subTypeLabel = DatasourceSubTypeMap[row.subType] || row.subType
+            const displayUrl = resolveDatasourceUrl(row)
+            const titleChildren = [
+              h('span', { class: 'datasource-name-cell__title-text' }, row.name)
+            ]
+            if (row.isDefault) {
+              titleChildren.push(
+                h(
+                  ElTag,
+                  {
+                    type: 'primary',
+                    size: 'small',
+                    effect: 'light',
+                    class: 'datasource-name-cell__default-tag'
+                  },
+                  () => 'default'
+                )
+              )
+            }
+            return h('div', { class: 'datasource-name-cell' }, [
+              h('div', { class: 'datasource-name-cell__logo' }, [
+                h(ArtSvgIcon, {
+                  icon: iconMeta.icon,
+                  class: 'datasource-name-cell__logo-icon',
+                  style: { color: iconMeta.color }
+                })
+              ]),
+              h('div', { class: 'datasource-name-cell__info' }, [
+                h('div', { class: 'datasource-name-cell__title' }, titleChildren),
+                h('div', { class: 'datasource-name-cell__meta' }, [
+                  h('span', { class: 'datasource-name-cell__type' }, subTypeLabel),
+                  h('span', { class: 'datasource-name-cell__sep' }, '|'),
+                  h('span', { class: 'datasource-name-cell__url' }, displayUrl)
+                ])
+              ])
+            ])
+          }
+        },
+        {
+          prop: 'clusterName',
+          label: '关联集群',
+          minWidth: 140,
+          formatter: (row: DatasourceItem) =>
+            h('span', { style: { fontSize: '12px' } }, getClusterAlias(row.clusterName))
         },
         {
           prop: 'type',
           label: '类型',
           minWidth: 80,
           formatter: (row: any) =>
-            h(ElTag, { type: DatasourceTypeMap[row.type]?.type || 'info', size: 'small', effect: 'light' }, () => DatasourceTypeMap[row.type]?.label || '未知')
-        },
-        {
-          prop: 'subType',
-          label: '数据来源',
-          minWidth: 120,
-          formatter: (row: any) =>
-            h('span', { style: { fontSize: '12px' } }, DatasourceSubTypeMap[row.subType] || row.subType)
-        },
-        {
-          prop: 'url',
-          label: 'URL',
-          minWidth: 260,
-          formatter: (row: any) =>
-            h('span', { style: { fontSize: '12px', wordBreak: 'break-all' } }, row.url)
-        },
-        {
-          prop: 'isDefault',
-          label: '默认',
-          minWidth: 70,
-          formatter: (row: any) =>
-            row.isDefault
-              ? h(ElTag, { type: 'success', size: 'small', effect: 'light' }, () => '是')
-              : h('span', { style: { fontSize: '12px', color: 'var(--el-text-color-secondary)' } }, '-')
-        },
-        {
-          prop: 'clusterName',
-          label: '集群',
-          minWidth: 140,
-          formatter: (row: any) =>
-            h('span', { style: { fontSize: '12px' } }, row.clusterName || '-')
-        },
-        {
-          prop: 'description',
-          label: '描述',
-          minWidth: 160,
-          formatter: (row: any) =>
-            h('span', { style: { fontSize: '12px' } }, row.description || '-')
+            h('span', { style: { fontSize: '12px' } }, DatasourceTypeMap[row.type]?.label || '未知')
         },
         {
           prop: 'gmtCreate',
@@ -166,10 +218,10 @@
         {
           prop: 'operation',
           label: '操作',
-          minWidth: 120,
+          width: 88,
           fixed: 'right',
           formatter: (row: any) =>
-            h('div', { style: 'display:flex;align-items:center;gap:12px;flex-wrap:nowrap' }, [
+            h('div', { style: 'display:flex;align-items:center;gap:8px;flex-wrap:nowrap' }, [
               h(
                 ElLink,
                 {
@@ -275,6 +327,86 @@
   }
 
   .quota-alert {
+    flex-shrink: 0;
+  }
+
+  .datasource-page :deep(.datasource-name-cell) {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 4px 0;
+  }
+
+  .datasource-page :deep(.datasource-name-cell__logo) {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    background: var(--el-fill-color-light);
+  }
+
+  .datasource-page :deep(.datasource-name-cell__logo-icon) {
+    width: 22px;
+    height: 22px;
+    font-size: 22px;
+  }
+
+  .datasource-page :deep(.datasource-name-cell__info) {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .datasource-page :deep(.datasource-name-cell__title) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--el-text-color-primary);
+  }
+
+  .datasource-page :deep(.datasource-name-cell__title-text) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .datasource-page :deep(.datasource-name-cell__meta) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--el-text-color-secondary);
+  }
+
+  .datasource-page :deep(.datasource-name-cell__type) {
+    flex-shrink: 0;
+  }
+
+  .datasource-page :deep(.datasource-name-cell__sep) {
+    flex-shrink: 0;
+    color: var(--el-border-color);
+  }
+
+  .datasource-page :deep(.datasource-name-cell__url) {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .datasource-page :deep(.datasource-name-cell__default-tag) {
     flex-shrink: 0;
   }
 </style>

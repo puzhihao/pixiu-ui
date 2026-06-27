@@ -3,8 +3,8 @@
     <template #header>
       <div class="page-hd-row">
         <div class="page-hd-main">
-          <div class="page-hd">日志采集</div>
-          <div class="page-hd-desc">通过 Loki Service Proxy 查询，页面只保留数据源与标签过滤。</div>
+          <div class="page-hd">日志查询</div>
+          <div class="page-hd-desc">通过集群内 Service Proxy 查询日志，支持 Loki 与 Elasticsearch 数据源。</div>
         </div>
 
         <div class="page-hd-actions">
@@ -74,11 +74,10 @@
         <div class="logs-unavailable-desc">{{ logUnavailableDescription }}</div>
 
         <div class="logs-unavailable-guide">
-          <div>当前页不再维护数据源，请先到“数据源”页面完成配置。</div>
-          <div>
-            日志数据源需为 <code>Loki</code>，并在 <code>config.log.url</code> 中填写集群内地址。
-          </div>
+          <div>当前页面不再维护内置日志地址，请先到“数据源”页面完成配置。</div>
+          <div>日志数据源支持 <code>Loki</code> 或 <code>Elasticsearch</code>，并需要在 <code>config.log.url</code> 中填写集群内可访问地址。</div>
           <div>示例：<code>http://loki-distributed-gateway.loki:3100</code></div>
+          <div>示例：<code>http://elasticsearch.logging:9200/filebeat-*/</code></div>
         </div>
       </div>
     </div>
@@ -86,48 +85,51 @@
     <template v-else>
       <div class="logs-builder">
         <div class="logs-builder__header">
-          <div class="logs-builder__title">标签过滤</div>
-          <ElButton size="small" plain @click="addFilter">添加条件</ElButton>
+          <div class="logs-builder__title">{{ queryBuilderTitle }}</div>
+          <ElButton v-if="isLokiDatasource" size="small" plain @click="addFilter">添加条件</ElButton>
         </div>
 
-        <div v-if="filters.length" class="logs-filter-list">
-          <div v-for="filter in filters" :key="filter.id" class="logs-filter-row">
-            <ElSelect
-              v-model="filter.key"
-              placeholder="标签"
-              class="logs-filter-key"
-              filterable
-              @change="onFilterKeyChange(filter)"
-            >
-              <ElOption v-for="item in labelKeys" :key="item" :label="item" :value="item" />
-            </ElSelect>
+        <template v-if="isLokiDatasource">
+          <div v-if="filters.length" class="logs-filter-list">
+            <div v-for="filter in filters" :key="filter.id" class="logs-filter-row">
+              <ElSelect
+                v-model="filter.key"
+                placeholder="标签"
+                class="logs-filter-key"
+                filterable
+                @change="onFilterKeyChange(filter)"
+              >
+                <ElOption v-for="item in labelKeys" :key="item" :label="item" :value="item" />
+              </ElSelect>
 
-            <ElSelect v-model="filter.operator" class="logs-filter-operator">
-              <ElOption v-for="item in operatorOptions" :key="item" :label="item" :value="item" />
-            </ElSelect>
+              <ElSelect v-model="filter.operator" class="logs-filter-operator">
+                <ElOption v-for="item in operatorOptions" :key="item" :label="item" :value="item" />
+              </ElSelect>
 
-            <ElSelect
-              v-model="filter.value"
-              placeholder="标签值"
-              class="logs-filter-value"
-              filterable
-              allow-create
-              default-first-option
-              :loading="filter.loading"
-              @visible-change="(visible) => visible && ensureFilterValues(filter)"
-            >
-              <ElOption
-                v-for="item in filter.options"
-                :key="`${filter.key}-${item}`"
-                :label="item"
-                :value="item"
-              />
-            </ElSelect>
+              <ElSelect
+                v-model="filter.value"
+                placeholder="标签值"
+                class="logs-filter-value"
+                filterable
+                allow-create
+                default-first-option
+                :loading="filter.loading"
+                @visible-change="(visible) => visible && ensureFilterValues(filter)"
+              >
+                <ElOption
+                  v-for="item in filter.options"
+                  :key="`${filter.key}-${item}`"
+                  :label="item"
+                  :value="item"
+                />
+              </ElSelect>
 
-            <ElButton text type="danger" @click="removeFilter(filter.id)">删除</ElButton>
+              <ElButton text type="danger" @click="removeFilter(filter.id)">删除</ElButton>
+            </div>
           </div>
-        </div>
-        <div v-else class="logs-builder__empty">未设置标签条件，默认可查询全部日志流。</div>
+          <div v-else class="logs-builder__empty">未设置标签条件时，默认查询全部日志流。</div>
+        </template>
+        <div v-else class="logs-builder__empty">当前为 Elasticsearch 数据源，可直接输入关键字或 Lucene query_string 查询语句。</div>
 
         <div class="logs-builder__meta">
           <span class="logs-builder__meta-item">Service: {{ serviceText }}</span>
@@ -146,7 +148,7 @@
           <div class="logs-query-editor-wrap">
             <ElInput
               v-model="queryDraft"
-              placeholder='支持手写 LogQL，例如 {namespace="default"} |= "error"'
+              :placeholder="queryDraftPlaceholder"
               class="logs-query-editor"
               @input="handleQueryDraftInput"
               @keyup.enter="loadLogs"
@@ -234,6 +236,7 @@
     host: string
     port: number
     protocol: 'http' | 'https'
+    basePath: string
   }
 
   type LokiLabelOperator = '=' | '!=' | '=~' | '!~'
@@ -247,6 +250,22 @@
       }>
     }
     error?: string
+  }
+
+  interface EsSearchHit {
+    _id?: string
+    _index?: string
+    _source?: Record<string, unknown>
+  }
+
+  interface EsSearchResponse {
+    hits?: {
+      hits?: EsSearchHit[]
+    }
+    error?: {
+      reason?: string
+      root_cause?: Array<{ reason?: string }>
+    }
   }
 
   interface LogTableRow {
@@ -303,8 +322,16 @@
   const selectedDatasource = computed(
     () => datasourceOptions.value.find((item) => item.id === selectedDatasourceId.value) ?? null
   )
+  const isLokiDatasource = computed(() => selectedDatasource.value?.subType === 'loki')
+  const isEsDatasource = computed(() => selectedDatasource.value?.subType === 'es')
   const datasourceUrlText = computed(() =>
     selectedDatasource.value ? resolveDatasourceUrl(selectedDatasource.value) : '-'
+  )
+  const queryBuilderTitle = computed(() => (isLokiDatasource.value ? '标签过滤' : 'ES 查询'))
+  const queryDraftPlaceholder = computed(() =>
+    isLokiDatasource.value
+      ? '支持手写 LogQL，例如 {namespace="default"} |= "error"'
+      : '支持 Lucene query_string，例如 kubernetes.namespace_name:"default" AND error'
   )
   const serviceText = computed(() => {
     const name = resolvedService.value?.metadata?.name
@@ -314,12 +341,17 @@
   })
   const proxyTargetText = computed(() => {
     const name = resolvedService.value?.metadata?.name
-    const port = resolvedEndpoint.value?.port
-    if (!name || !port || !resolvedServiceNamespace.value) return '-'
-    return `${name}:${port} /api/v1/namespaces/${resolvedServiceNamespace.value}/services/${name}:${port}/proxy/loki/api/v1/query_range`
+    const endpoint = resolvedEndpoint.value
+    if (!name || !endpoint?.port || !resolvedServiceNamespace.value) return '-'
+    const requestPath = isEsDatasource.value ? '/_search' : '/loki/api/v1/query_range'
+    return `${name}:${endpoint.port} /api/v1/namespaces/${resolvedServiceNamespace.value}/services/${name}:${endpoint.port}/proxy${endpoint.basePath}${requestPath}`
   })
 
   const generatedQuery = computed(() => {
+    if (isEsDatasource.value) {
+      return keyword.value.trim() || '*'
+    }
+
     const selectorParts = filters.value
       .map((item) => ({
         key: item.key.trim(),
@@ -351,15 +383,17 @@
       Boolean(selectedDatasource.value) && Boolean(resolvedEndpoint.value) && !errorMessage.value
   )
   const logUnavailableTitle = computed(() => {
-    if (!datasourceOptions.value.length) return '未配置 Loki 数据源'
-    if (!resolvedEndpoint.value) return '未找到可用 Loki Service'
+    if (!datasourceOptions.value.length) return '未配置日志数据源'
+    if (!resolvedEndpoint.value) return '未找到可用日志 Service'
     return '当前日志查询不可用'
   })
   const logUnavailableDescription = computed(
-    () => errorMessage.value || '请先完成 Loki 查询前置条件'
+    () => errorMessage.value || '请先完成日志查询前置条件'
   )
   const emptyText = computed(() => {
-    if (!effectiveQuery.value) return '请输入 LogQL 查询语句'
+    if (!effectiveQuery.value) {
+      return isEsDatasource.value ? '请输入 ES 查询语句' : '请输入 LogQL 查询语句'
+    }
     if (loading.value) return '加载日志中...'
     return '暂无日志'
   })
@@ -398,6 +432,12 @@
     void ensureFilterValues(filter)
   }
 
+  function normalizeBasePath(pathname: string): string {
+    const normalized = pathname.trim().replace(/\/+$/, '')
+    if (!normalized || normalized === '/') return ''
+    return normalized.startsWith('/') ? normalized : `/${normalized}`
+  }
+
   function parseDatasourceEndpoint(rawUrl: string): ParsedDatasourceEndpoint | null {
     if (!rawUrl) return null
     try {
@@ -421,7 +461,8 @@
         namespace,
         host: parsed.hostname,
         port,
-        protocol
+        protocol,
+        basePath: normalizeBasePath(parsed.pathname)
       }
     } catch {
       return null
@@ -433,9 +474,10 @@
     const service = resolvedService.value?.metadata?.name
     const namespace = resolvedServiceNamespace.value
     if (!endpoint || !service || !namespace) return ''
+    const requestPath = path.startsWith('/') ? path : `/${path}`
     return (
       `/pixiu/proxy/${encodeURIComponent(currentCluster.value)}/api/v1/namespaces/${encodeURIComponent(namespace)}` +
-      `/services/${encodeURIComponent(service)}:${endpoint.port}/proxy${path}`
+      `/services/${encodeURIComponent(service)}:${endpoint.port}/proxy${endpoint.basePath}${requestPath}`
     )
   }
 
@@ -445,7 +487,9 @@
       const { items } = await fetchDatasourceList({ page: 1, limit: 200 })
       datasourceOptions.value = items.filter(
         (item) =>
-          item.clusterName === currentCluster.value && item.type === 0 && item.subType === 'loki'
+          item.clusterName === currentCluster.value &&
+          item.type === 0 &&
+          (item.subType === 'loki' || item.subType === 'es')
       )
       selectedDatasourceId.value =
         datasourceOptions.value.find((item) => item.isDefault)?.id ?? datasourceOptions.value[0]?.id
@@ -505,7 +549,7 @@
 
   async function ensureFilterValues(filter: FilterRow) {
     const key = filter.key.trim()
-    if (!key) return
+    if (!key || !isLokiDatasource.value) return
     if (labelValueCache.value[key]) {
       filter.options = labelValueCache.value[key]
       return
@@ -551,13 +595,13 @@
 
     if (!datasource) return
     if (!rawUrl) {
-      errorMessage.value = '当前数据源没有配置 config.log.url'
+      errorMessage.value = '当前数据源未配置 config.log.url'
       return
     }
 
     const endpoint = parseDatasourceEndpoint(rawUrl)
     if (!endpoint?.serviceName) {
-      errorMessage.value = '数据源 URL 不是合法的 Loki HTTP 地址'
+      errorMessage.value = '数据源 URL 不是合法的集群内 HTTP 地址'
       return
     }
 
@@ -567,9 +611,11 @@
       resolvedService.value = service
       resolvedServiceNamespace.value = namespace
       resolvedEndpoint.value = endpoint
-      await loadLabelKeys()
+      if (isLokiDatasource.value) {
+        await loadLabelKeys()
+      }
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : '解析 Loki Service 失败'
+      errorMessage.value = error instanceof Error ? error.message : '解析日志 Service 失败'
     } finally {
       resolving.value = false
     }
@@ -588,71 +634,275 @@
     const numeric = Number.parseInt(ns, 10)
     if (!Number.isFinite(numeric)) return ns
     const ms = Math.floor(numeric / 1_000_000)
-    const date = new Date(ms)
-    if (Number.isNaN(date.getTime())) return ns
+    return formatDateTime(ms)
+  }
+
+  function formatDateTime(timestamp: number): string {
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return String(timestamp)
     const pad = (value: number, size = 2) => String(value).padStart(size, '0')
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`
   }
 
-  function parseLokiError(error: unknown): string {
+  function parseRequestError(error: unknown): string {
     if (typeof error === 'string') return error
     if (error && typeof error === 'object') {
       const axiosLike = error as { message?: string; response?: { data?: unknown } }
       const data = axiosLike.response?.data
-      if (typeof data === 'string') return data || axiosLike.message || '请求 Loki 失败'
+      if (typeof data === 'string') return data || axiosLike.message || '请求失败'
       if (data && typeof data === 'object') {
-        const payload = data as { message?: string; error?: string }
-        return payload.error || payload.message || axiosLike.message || '请求 Loki 失败'
+        const payload = data as {
+          message?: string
+          error?: string
+          reason?: string
+          root_cause?: Array<{ reason?: string }>
+        }
+        return (
+          payload.error ||
+          payload.reason ||
+          payload.root_cause?.[0]?.reason ||
+          payload.message ||
+          axiosLike.message ||
+          '请求失败'
+        )
       }
       if (axiosLike.message) return axiosLike.message
     }
-    return '请求 Loki 失败'
+    return '请求失败'
   }
 
   async function loadLogs() {
     if (!canQuery.value) return
-    const url = serviceProxyBase('/loki/api/v1/query_range')
-    if (!url) return
 
     loading.value = true
     try {
-      const nowNs = Date.now() * 1_000_000
-      const startNs = nowNs - timeRangeMinutes.value * 60 * 1_000_000_000
-      const { data } = await kubeProxyAxios.get<LokiQueryRangeResponse>(url, {
-        params: {
-          query: effectiveQuery.value,
-          limit: lineLimit.value,
-          start: String(startNs),
-          end: String(nowNs),
-          direction: 'BACKWARD'
-        }
-      })
-
-      if (data?.status !== 'success') {
-        throw new Error(data?.error || 'Loki 查询失败')
+      if (isEsDatasource.value) {
+        await loadEsLogs()
+      } else {
+        await loadLokiLogs()
       }
-
-      expandedRowKeys.value = []
-      logs.value = (data.data?.result ?? [])
-        .flatMap((stream, streamIndex) =>
-          (stream.values ?? []).map(([timestamp, line], lineIndex) => ({
-            id: `${timestamp}-${streamIndex}-${lineIndex}`,
-            time: formatNsTimestamp(timestamp),
-            ns: stream.stream?.namespace || '-',
-            pod: stream.stream?.pod || '-',
-            container: stream.stream?.container || '-',
-            msg: line,
-            raw: line,
-            labels: stream.stream ?? {}
-          }))
-        )
-        .sort((a, b) => (a.time < b.time ? 1 : -1))
     } catch (error) {
       logs.value = []
-      ElMessage.error(parseLokiError(error))
+      ElMessage.error(parseRequestError(error))
     } finally {
       loading.value = false
     }
+  }
+
+  async function loadLokiLogs() {
+    const url = serviceProxyBase('/loki/api/v1/query_range')
+    if (!url) return
+
+    const nowNs = Date.now() * 1_000_000
+    const startNs = nowNs - timeRangeMinutes.value * 60 * 1_000_000_000
+    const { data } = await kubeProxyAxios.get<LokiQueryRangeResponse>(url, {
+      params: {
+        query: effectiveQuery.value,
+        limit: lineLimit.value,
+        start: String(startNs),
+        end: String(nowNs),
+        direction: 'BACKWARD'
+      }
+    })
+
+    if (data?.status !== 'success') {
+      throw new Error(data?.error || 'Loki 查询失败')
+    }
+
+    expandedRowKeys.value = []
+    logs.value = (data.data?.result ?? [])
+      .flatMap((stream, streamIndex) =>
+        (stream.values ?? []).map(([timestamp, line], lineIndex) => ({
+          id: `${timestamp}-${streamIndex}-${lineIndex}`,
+          time: formatNsTimestamp(timestamp),
+          ns: stream.stream?.namespace || '-',
+          pod: stream.stream?.pod || '-',
+          container: stream.stream?.container || '-',
+          msg: line,
+          raw: line,
+          labels: stream.stream ?? {}
+        }))
+      )
+      .sort((a, b) => (a.time < b.time ? 1 : -1))
+  }
+
+  async function loadEsLogs() {
+    const url = serviceProxyBase('/_search')
+    if (!url) return
+
+    const now = new Date()
+    const start = new Date(now.getTime() - timeRangeMinutes.value * 60 * 1000)
+    const query = effectiveQuery.value.trim()
+    const must = query && query !== '*' ? [{ query_string: { query, analyze_wildcard: true } }] : []
+
+    const { data } = await kubeProxyAxios.post<EsSearchResponse>(url, {
+      size: lineLimit.value,
+      sort: [
+        { '@timestamp': { order: 'desc', unmapped_type: 'date' } },
+        { timestamp: { order: 'desc', unmapped_type: 'date' } },
+        { time: { order: 'desc', unmapped_type: 'date' } }
+      ],
+      query: {
+        bool: {
+          must,
+          filter: [
+            {
+              bool: {
+                should: [
+                  {
+                    range: {
+                      '@timestamp': {
+                        gte: start.toISOString(),
+                        lte: now.toISOString(),
+                        format: 'strict_date_optional_time'
+                      }
+                    }
+                  },
+                  {
+                    range: {
+                      timestamp: {
+                        gte: start.toISOString(),
+                        lte: now.toISOString(),
+                        format: 'strict_date_optional_time'
+                      }
+                    }
+                  },
+                  {
+                    range: {
+                      time: {
+                        gte: start.toISOString(),
+                        lte: now.toISOString(),
+                        format: 'strict_date_optional_time'
+                      }
+                    }
+                  }
+                ],
+                minimum_should_match: 1
+              }
+            }
+          ]
+        }
+      }
+    })
+
+    if (data?.error) {
+      throw new Error(
+        data.error.reason || data.error.root_cause?.[0]?.reason || 'Elasticsearch 查询失败'
+      )
+    }
+
+    expandedRowKeys.value = []
+    logs.value = (data.hits?.hits ?? []).map(mapEsHitToRow)
+  }
+
+  function mapEsHitToRow(hit: EsSearchHit, index: number): LogTableRow {
+    const source = hit._source && typeof hit._source === 'object' ? hit._source : {}
+    const timestamp = getFirstValue(source, ['@timestamp', 'timestamp', 'time', 'log.time'])
+    const message = getFirstValue(source, ['message', 'msg', 'log', 'log.message', 'event.original'])
+    const labels = flattenRecord(source)
+    const raw = JSON.stringify(source, null, 2)
+
+    return {
+      id: String(hit._id || `${hit._index || 'es'}-${index}`),
+      time: formatAnyTimestamp(timestamp),
+      ns: stringifyValue(
+        getFirstValue(source, [
+          'kubernetes.namespace_name',
+          'kubernetes.namespace',
+          'kubernetes.namespace.name',
+          'namespace'
+        ])
+      ),
+      pod: stringifyValue(
+        getFirstValue(source, ['kubernetes.pod_name', 'kubernetes.pod.name', 'pod', 'pod_name'])
+      ),
+      container: stringifyValue(
+        getFirstValue(source, [
+          'kubernetes.container_name',
+          'kubernetes.container.name',
+          'container',
+          'container_name'
+        ])
+      ),
+      msg: stringifyValue(message, raw),
+      raw,
+      labels
+    }
+  }
+
+  function getFirstValue(source: Record<string, unknown>, paths: string[]): unknown {
+    for (const path of paths) {
+      const value = getByPath(source, path)
+      if (value !== undefined && value !== null && value !== '') return value
+    }
+    return undefined
+  }
+
+  function getByPath(source: Record<string, unknown>, path: string): unknown {
+    const segments = path.split('.')
+    let current: unknown = source
+    for (const segment of segments) {
+      if (!current || typeof current !== 'object') return undefined
+      current = (current as Record<string, unknown>)[segment]
+    }
+    return current
+  }
+
+  function stringifyValue(value: unknown, fallback = '-'): string {
+    if (value == null || value === '') return fallback
+    if (typeof value === 'string') return value
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return fallback
+    }
+  }
+
+  function flattenRecord(
+    value: unknown,
+    prefix = '',
+    result: Record<string, string> = {}
+  ): Record<string, string> {
+    if (value == null) return result
+
+    if (Array.isArray(value)) {
+      if (prefix) result[prefix] = value.map((item) => stringifyValue(item, '')).join(', ')
+      return result
+    }
+
+    if (typeof value === 'object') {
+      for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+        const nextPrefix = prefix ? `${prefix}.${key}` : key
+        flattenRecord(child, nextPrefix, result)
+      }
+      return result
+    }
+
+    if (prefix) {
+      result[prefix] = stringifyValue(value, '')
+    }
+    return result
+  }
+
+  function formatAnyTimestamp(value: unknown): string {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const millis = value > 1_000_000_000_000 ? value : value * 1000
+      return formatDateTime(millis)
+    }
+    if (typeof value === 'string' && value.trim()) {
+      const asNumber = Number(value)
+      if (Number.isFinite(asNumber)) {
+        const millis = asNumber > 1_000_000_000_000 ? asNumber : asNumber * 1000
+        return formatDateTime(millis)
+      }
+      const parsed = new Date(value)
+      if (!Number.isNaN(parsed.getTime())) {
+        return formatDateTime(parsed.getTime())
+      }
+      return value
+    }
+    return '-'
   }
 
   function getLogRowKey(row: LogTableRow) {
@@ -698,6 +948,8 @@
 
   watch(selectedDatasourceId, async () => {
     filters.value = []
+    queryDirty.value = false
+    queryDraft.value = generatedQuery.value
     await resolveServiceContext()
   })
 </script>

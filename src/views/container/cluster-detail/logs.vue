@@ -1,234 +1,449 @@
 <template>
-  <ElCard shadow="never" class="art-table-card logs-page">
-    <template #header>
-      <div class="page-hd-row">
-        <div class="page-hd-main">
-          <div class="page-hd">日志查询</div>
-          <div class="page-hd-desc">通过集群内 Service Proxy 查询日志，支持 Loki 与 Elasticsearch 数据源。</div>
-        </div>
-
-        <div class="page-hd-actions">
-          <div class="page-hd-actions__stack">
-            <div v-if="datasourceOptions.length" class="logs-toolbar-datasource">
-              <span class="logs-toolbar-datasource__label">数据源</span>
-              <ElSelect
-                v-model="selectedDatasourceId"
-                placeholder="请选择数据源"
-                class="logs-toolbar-datasource__select"
-                :loading="datasourceLoading"
-              >
-                <ElOption
-                  v-for="item in datasourceOptions"
-                  :key="item.id"
-                  :label="item.name"
-                  :value="item.id"
-                />
-              </ElSelect>
-
-              <template v-if="selectedDatasource">
-                <span class="logs-datasource-type-tag">
-                  {{ selectedDatasource.subType.toUpperCase() }}
-                </span>
-                <span v-if="selectedDatasource.isDefault" class="logs-datasource-badge">默认</span>
-                <span class="logs-toolbar-datasource__url">{{ datasourceUrlText }}</span>
-              </template>
-            </div>
-
-            <div class="page-hd-actions__right">
-              <ElSelect v-model="timeRangeMinutes" class="logs-time-range">
-                <ElOption :value="15" label="最近 15 分钟" />
-                <ElOption :value="60" label="最近 1 小时" />
-                <ElOption :value="360" label="最近 6 小时" />
-                <ElOption :value="1440" label="最近 24 小时" />
-              </ElSelect>
-              <ElInputNumber
-                v-model="lineLimit"
-                :min="10"
-                :max="5000"
-                :step="50"
-                controls-position="right"
-                class="logs-limit-input"
-              />
-              <ElButton :loading="resolving" plain @click="refreshContext">刷新</ElButton>
-              <ElButton type="primary" :loading="loading" :disabled="!canQuery" @click="loadLogs">
-                查询
-              </ElButton>
-            </div>
-          </div>
-        </div>
-      </div>
-    </template>
-
+  <div
+    class="logs-console art-table-card"
+    :class="{ 'logs-console--placeholder': isPlaceholderState }"
+  >
     <div v-if="!detectResolved" class="logs-loading-state">
-      <div
-        class="logs-loading-card"
-        v-loading="true"
-        element-loading-text="正在加载日志数据源..."
-      ></div>
+      <div class="logs-loading-card" v-loading="true" element-loading-text="正在加载日志数据源..." />
     </div>
 
-    <div v-else-if="!logAccessReady" class="logs-unavailable-state">
-      <div class="logs-unavailable-card">
-        <div class="logs-unavailable-icon">!</div>
-        <div class="logs-unavailable-title">{{ logUnavailableTitle }}</div>
-        <div class="logs-unavailable-desc">{{ logUnavailableDescription }}</div>
-
-        <div class="logs-unavailable-guide">
-          <div>当前页面不再维护内置日志地址，请先到“数据源”页面完成配置。</div>
-          <div>日志数据源支持 <code>Loki</code> 或 <code>Elasticsearch</code>，并需要在 <code>config.log.url</code> 中填写集群内可访问地址。</div>
-          <div>示例：<code>http://loki-distributed-gateway.loki:3100</code></div>
-          <div>示例：<code>http://elasticsearch.logging:9200/filebeat-*/</code></div>
-        </div>
-      </div>
+    <div v-else-if="!hasConfiguredDatasource" class="logs-unavailable-state">
+      <el-icon class="logs-unavailable-icon" :size="48">
+        <Document />
+      </el-icon>
+      <div class="logs-unavailable-title">暂未开启</div>
+      <div class="logs-unavailable-desc">当前集群暂未开启日志功能，您可前往数据源页面开启</div>
+      <ElButton type="primary" size="small" class="logs-unavailable-btn" @click="goToDatasource">
+        前往开启
+      </ElButton>
     </div>
 
     <template v-else>
-      <div class="logs-builder">
-        <div class="logs-builder__header">
-          <div class="logs-builder__title">{{ queryBuilderTitle }}</div>
-          <ElButton v-if="isLokiDatasource" size="small" plain @click="addFilter">添加条件</ElButton>
-        </div>
-
-        <template v-if="isLokiDatasource">
-          <div v-if="filters.length" class="logs-filter-list">
-            <div v-for="filter in filters" :key="filter.id" class="logs-filter-row">
-              <ElSelect
-                v-model="filter.key"
-                placeholder="标签"
-                class="logs-filter-key"
-                filterable
-                @change="onFilterKeyChange(filter)"
-              >
-                <ElOption v-for="item in labelKeys" :key="item" :label="item" :value="item" />
-              </ElSelect>
-
-              <ElSelect v-model="filter.operator" class="logs-filter-operator">
-                <ElOption v-for="item in operatorOptions" :key="item" :label="item" :value="item" />
-              </ElSelect>
-
-              <ElSelect
-                v-model="filter.value"
-                placeholder="标签值"
-                class="logs-filter-value"
-                filterable
-                allow-create
-                default-first-option
-                :loading="filter.loading"
-                @visible-change="(visible) => visible && ensureFilterValues(filter)"
-              >
-                <ElOption
-                  v-for="item in filter.options"
-                  :key="`${filter.key}-${item}`"
-                  :label="item"
-                  :value="item"
-                />
-              </ElSelect>
-
-              <ElButton text type="danger" @click="removeFilter(filter.id)">删除</ElButton>
-            </div>
-          </div>
-          <div v-else class="logs-builder__empty">未设置标签条件时，默认查询全部日志流。</div>
-        </template>
-        <div v-else class="logs-builder__empty">当前为 Elasticsearch 数据源，可直接输入关键字或 Lucene query_string 查询语句。</div>
-
-        <div class="logs-builder__meta">
-          <span class="logs-builder__meta-item">Service: {{ serviceText }}</span>
-          <span class="logs-builder__meta-item">Proxy: {{ proxyTargetText }}</span>
-        </div>
-
-        <div class="logs-query-row">
-          <ElInput
-            v-model="keyword"
-            placeholder="日志内容关键字（可选）"
-            clearable
-            class="logs-search"
-            @keyup.enter="loadLogs"
-            @clear="syncGeneratedQuery"
-          />
-          <div class="logs-query-editor-wrap">
-            <ElInput
-              v-model="queryDraft"
-              :placeholder="queryDraftPlaceholder"
-              class="logs-query-editor"
-              @input="handleQueryDraftInput"
-              @keyup.enter="loadLogs"
-            />
-            <ElButton
-              v-if="queryDirty"
-              text
-              type="primary"
-              class="logs-query-reset"
-              @click="resetQueryDraft"
+      <section class="logs-console__top-card">
+        <div class="logs-console__rule-bar">
+        <div class="logs-console__rule-main">
+          <div class="logs-console__rule-left">
+            <slot name="before-datasource" />
+            <span class="logs-console__rule-label">数据源</span>
+            <ElSelect
+              v-model="selectedDatasourceId"
+              placeholder="请选择数据源"
+              class="logs-console__rule-select"
+              :loading="datasourceLoading"
             >
-              恢复生成
-            </ElButton>
+              <template #label="{ value }">
+                <span
+                  v-if="value && getDatasourceById(Number(value))"
+                  class="logs-console__datasource-option"
+                >
+                  <span
+                    class="logs-console__datasource-logo"
+                    :class="`is-${getDatasourceById(Number(value))?.subType}`"
+                  >
+                    <ArtSvgIcon
+                      :icon="subTypeMeta[getDatasourceById(Number(value))!.subType].icon"
+                      class="logs-console__datasource-logo-icon"
+                    />
+                  </span>
+                  <span class="logs-console__datasource-name">
+                    {{ getDatasourceById(Number(value))?.name }}
+                  </span>
+                </span>
+              </template>
+              <ElOption
+                v-for="item in datasourceOptions"
+                :key="item.id"
+                :label="item.name"
+                :value="item.id"
+              >
+                <span class="logs-console__datasource-option">
+                  <span class="logs-console__datasource-logo" :class="`is-${item.subType}`">
+                    <ArtSvgIcon
+                      :icon="subTypeMeta[item.subType].icon"
+                      class="logs-console__datasource-logo-icon"
+                    />
+                  </span>
+                  <span class="logs-console__datasource-name">{{ item.name }}</span>
+                </span>
+              </ElOption>
+            </ElSelect>
+          </div>
+          <ElButton link type="primary" class="logs-console__external-link" disabled>
+            在日志服务中查看更多
+            <ElIcon class="logs-console__external-link-icon"><Link /></ElIcon>
+          </ElButton>
+        </div>
+        <div class="logs-console__query-toolbar">
+          <div class="logs-console__query-toolbar-left">
+            <span class="logs-console__query-mode">语句模式</span>
+            <ElButton text size="small" disabled>收藏夹</ElButton>
+            <ElButton text size="small" disabled>历史记录</ElButton>
+            <ElButton text size="small" disabled>语句模板</ElButton>
+          </div>
+          <div class="logs-console__query-toolbar-right">
+            <ElButton text size="small" disabled>推荐仪表盘</ElButton>
+            <span class="logs-console__hot-tag">HOT</span>
+            <ElButton text size="small" disabled>告警</ElButton>
+            <ElButton text size="small" disabled>采集配置</ElButton>
+            <ElButton text size="small" disabled>索引配置</ElButton>
+            <ElButton text size="small" disabled>更多</ElButton>
           </div>
         </div>
-      </div>
+        <div class="logs-console__query-body">
+          <ElInput
+            v-model="queryDraft"
+            :placeholder="queryDraftPlaceholder"
+            class="logs-query-input"
+            clearable
+            @input="handleQueryDraftInput"
+            @keyup.enter="loadLogs"
+          />
+          <ElSelect v-model="timeRangeMinutes" class="logs-time-range">
+            <ElOption :value="15" label="近15分钟" />
+            <ElOption :value="60" label="近1小时" />
+            <ElOption :value="360" label="近6小时" />
+            <ElOption :value="1440" label="近24小时" />
+          </ElSelect>
+          <ElButton
+            type="primary"
+            class="logs-search-btn"
+            :icon="Search"
+            :loading="loading"
+            :disabled="!canQuery"
+            @click="loadLogs"
+          >
+            搜索
+          </ElButton>
+        </div>
+        <div v-if="isLokiDatasource || queryDirty" class="logs-console__query-actions">
+          <span v-if="isLokiDatasource" class="logs-console__query-link" @click="addFilter">添加条件</span>
+          <span v-if="queryDirty" class="logs-console__query-link" @click="resetQueryDraft">恢复生成</span>
+        </div>
+        <div v-if="isLokiDatasource && filters.length" class="logs-filter-list">
+          <div v-for="filter in filters" :key="filter.id" class="logs-filter-row">
+            <ElSelect
+              v-model="filter.key"
+              placeholder="标签"
+              class="logs-filter-key"
+              filterable
+              @change="onFilterKeyChange(filter)"
+            >
+              <ElOption v-for="item in labelKeys" :key="item" :label="item" :value="item" />
+            </ElSelect>
+            <ElSelect v-model="filter.operator" class="logs-filter-operator">
+              <ElOption v-for="item in operatorOptions" :key="item" :label="item" :value="item" />
+            </ElSelect>
+            <ElSelect
+              v-model="filter.value"
+              placeholder="标签值"
+              class="logs-filter-value"
+              filterable
+              allow-create
+              default-first-option
+              :loading="filter.loading"
+              @visible-change="(visible) => visible && ensureFilterValues(filter)"
+            >
+              <ElOption
+                v-for="item in filter.options"
+                :key="`${filter.key}-${item}`"
+                :label="item"
+                :value="item"
+              />
+            </ElSelect>
+            <span class="logs-console__query-link" @click="removeFilter(filter.id)">删除</span>
+          </div>
+        </div>
+        </div>
+      </section>
 
-      <ElTable
-        v-loading="loading"
-        :data="logs"
-        :row-key="getLogRowKey"
-        :expand-row-keys="expandedRowKeys"
-        stripe
-        size="small"
-        class="logs-table"
-        @expand-change="handleExpandChange"
+      <section
+        class="logs-console__results"
+        :class="{ 'is-fields-collapsed': isFieldsCollapsed }"
       >
-        <template #empty>
-          <div class="logs-empty">{{ emptyText }}</div>
-        </template>
-        <ElTableColumn type="expand" width="44">
-          <template #default="{ row }">
-            <div class="logs-inline-detail">
-              <div class="logs-inline-detail__section">
-                <div class="logs-inline-detail__title">字段</div>
-                <div class="logs-field-list">
-                  <div
-                    v-for="item in getLogFieldEntries(row as LogTableRow)"
-                    :key="`${(row as LogTableRow).id}-${item.key}`"
-                    class="logs-field-item"
-                  >
-                    <span class="logs-field-item__key">{{ item.key }}</span>
-                    <span class="logs-field-item__value">{{ item.value }}</span>
+        <div class="logs-console__results-tabs">
+          <button
+            type="button"
+            class="logs-console__result-tab"
+            :class="{ 'is-active': resultPanelTab === 'logs' }"
+            @click="resultPanelTab = 'logs'"
+          >
+            原始日志
+          </button>
+          <button
+            type="button"
+            class="logs-console__result-tab"
+            :class="{ 'is-active': resultPanelTab === 'chart' }"
+            @click="resultPanelTab = 'chart'"
+          >
+            统计图表
+          </button>
+        </div>
+
+        <div class="logs-console__results-body">
+        <aside class="logs-console__fields" :class="{ 'is-collapsed': isFieldsCollapsed }">
+          <div class="logs-console__fields-header">
+            <div v-if="!isFieldsCollapsed" class="logs-console__fields-title">字段列表</div>
+            <button
+              type="button"
+              class="logs-console__fields-toggle"
+              :title="isFieldsCollapsed ? '展开字段列表' : '折叠字段列表'"
+              @click="isFieldsCollapsed = !isFieldsCollapsed"
+            >
+              <ElIcon :size="16">
+                <component :is="isFieldsCollapsed ? Expand : Fold" />
+              </ElIcon>
+            </button>
+          </div>
+          <template v-if="!isFieldsCollapsed">
+          <ElInput
+            v-model="fieldSearch"
+            clearable
+            placeholder="搜索字段"
+            class="logs-console__fields-search"
+          />
+          <div class="logs-console__fields-group">
+            <div class="logs-console__fields-group-title">可用字段</div>
+            <button
+              v-for="field in filteredFieldKeys"
+              :key="field"
+              type="button"
+              class="logs-console__field-item"
+              @click="addFieldFilter(field)"
+            >
+              <span class="logs-console__field-name">{{ field }}</span>
+              <span class="logs-console__field-type">t</span>
+            </button>
+            <div v-if="!filteredFieldKeys.length" class="logs-console__fields-empty">暂无字段</div>
+          </div>
+          </template>
+        </aside>
+
+        <main class="logs-console__main">
+          <div class="logs-console__main-header">
+            <div class="logs-console__main-header-top">
+              <span class="logs-console__count">日志条数 {{ logs.length }}</span>
+              <div class="logs-console__main-toolbar">
+                <ElButton text size="small" disabled>添加到仪表盘</ElButton>
+                <ElButton text size="small" disabled>添加告警策略</ElButton>
+                <ElButton text size="small" disabled :icon="Download">下载</ElButton>
+              </div>
+            </div>
+            <div v-if="resultPanelTab === 'logs'" class="logs-trend-chart">
+              <div v-if="showTrendChart" class="logs-trend-chart__panel">
+                <button type="button" class="logs-trend-chart__toggle" @click="showTrendChart = false">
+                  <ElIcon><Hide /></ElIcon>
+                  隐藏图表
+                </button>
+                <div class="logs-trend-chart__plot">
+                  <div class="logs-trend-chart__bars">
+                    <div
+                      v-for="item in trendChartData"
+                      :key="item.key"
+                      class="logs-trend-chart__bar-wrap"
+                      :title="`${item.label}: ${item.count}`"
+                    >
+                      <div
+                        class="logs-trend-chart__bar"
+                        :style="{
+                          height: `${item.count ? Math.max(6, (item.count / maxTrendCount) * 100) : 0}%`
+                        }"
+                      />
+                    </div>
+                  </div>
+                  <div class="logs-trend-chart__axis">
+                    <span
+                      v-for="item in trendChartData"
+                      :key="`axis-${item.key}`"
+                      class="logs-trend-chart__axis-label"
+                    >
+                      {{ item.label }}
+                    </span>
                   </div>
                 </div>
               </div>
-
-              <div class="logs-inline-detail__section">
-                <div class="logs-inline-detail__title">日志内容</div>
-                <pre class="logs-detail-code">{{ (row as LogTableRow).raw }}</pre>
+              <button v-else type="button" class="logs-trend-chart__show" @click="showTrendChart = true">
+                <ElIcon><View /></ElIcon>
+                显示图表
+              </button>
+            </div>
+            <div class="logs-console__view-mode">
+              <div class="logs-view-segment">
+                <button
+                  type="button"
+                  class="logs-view-segment__item"
+                  :class="{ 'is-active': resultViewMode === 'raw' }"
+                  @click="resultViewMode = 'raw'"
+                >
+                  原始
+                </button>
+                <button
+                  type="button"
+                  class="logs-view-segment__item"
+                  :class="{ 'is-active': resultViewMode === 'table' }"
+                  @click="resultViewMode = 'table'"
+                >
+                  表格
+                </button>
+              </div>
+              <div class="logs-console__display-options">
+                <label class="logs-console__display-check">
+                  <ElCheckbox v-model="wordWrap" />换行
+                </label>
+                <label class="logs-console__display-check">
+                  <ElCheckbox v-model="showLineNumber" />行号
+                </label>
+                <label class="logs-console__display-check">
+                  <ElCheckbox v-model="showLogTime" />日志时间
+                </label>
               </div>
             </div>
+          </div>
+
+          <div v-if="resultPanelTab === 'chart'" class="logs-console__chart-panel">
+            <div v-if="trendChartData.some((item) => item.count > 0)" class="logs-trend-chart__panel is-large">
+              <div class="logs-trend-chart__plot">
+                <div class="logs-trend-chart__bars">
+                  <div
+                    v-for="item in trendChartData"
+                    :key="`chart-${item.key}`"
+                    class="logs-trend-chart__bar-wrap"
+                    :title="`${item.label}: ${item.count}`"
+                  >
+                    <div
+                      class="logs-trend-chart__bar"
+                      :style="{
+                        height: `${item.count ? Math.max(8, (item.count / maxTrendCount) * 100) : 0}%`
+                      }"
+                    />
+                  </div>
+                </div>
+                <div class="logs-trend-chart__axis">
+                  <span
+                    v-for="item in trendChartData"
+                    :key="`chart-axis-${item.key}`"
+                    class="logs-trend-chart__axis-label"
+                  >
+                    {{ item.label }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <ElEmpty v-else description="暂无统计数据，请先搜索日志" />
+          </div>
+
+          <template v-else>
+            <div v-loading="loading" class="logs-console__content">
+              <div v-if="resultViewMode === 'raw'" class="logs-raw-list">
+                <div
+                  v-for="(row, index) in logs"
+                  :key="row.id"
+                  class="logs-raw-line"
+                  :class="{ 'is-wrap': wordWrap }"
+                >
+                  <span v-if="showLineNumber" class="logs-raw-line__no">{{ index + 1 }}</span>
+                  <span v-if="showLogTime" class="logs-raw-line__time">{{ row.time }}</span>
+                  <span class="logs-raw-line__msg">{{ row.msg }}</span>
+                </div>
+                <div v-if="!logs.length" class="logs-empty">{{ emptyText }}</div>
+              </div>
+
+              <ElTable
+                v-else
+                :data="logs"
+                :row-key="getLogRowKey"
+                :expand-row-keys="expandedRowKeys"
+                stripe
+                size="small"
+                class="logs-table"
+                @expand-change="handleExpandChange"
+              >
+                <template #empty>
+                  <div class="logs-empty">{{ emptyText }}</div>
+                </template>
+                <ElTableColumn type="expand" width="44">
+                  <template #default="{ row }">
+                    <div class="logs-inline-detail">
+                      <div class="logs-inline-detail__section">
+                        <div class="logs-inline-detail__title">字段</div>
+                        <div class="logs-field-list">
+                          <div
+                            v-for="item in getLogFieldEntries(row as LogTableRow)"
+                            :key="`${(row as LogTableRow).id}-${item.key}`"
+                            class="logs-field-item"
+                          >
+                            <span class="logs-field-item__key">{{ item.key }}</span>
+                            <span class="logs-field-item__value">{{ item.value }}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="logs-inline-detail__section">
+                        <div class="logs-inline-detail__title">日志内容</div>
+                        <pre class="logs-detail-code">{{ (row as LogTableRow).raw }}</pre>
+                      </div>
+                    </div>
+                  </template>
+                </ElTableColumn>
+                <ElTableColumn prop="time" label="时间" width="190" />
+                <ElTableColumn prop="ns" label="命名空间" width="140" />
+                <ElTableColumn prop="pod" label="Pod" min-width="220" show-overflow-tooltip />
+                <ElTableColumn prop="container" label="容器" width="180" show-overflow-tooltip />
+                <ElTableColumn prop="msg" label="摘要" min-width="420" show-overflow-tooltip />
+                <ElTableColumn label="操作" width="90" fixed="right">
+                  <template #default="{ row }">
+                    <ElButton link type="primary" @click="toggleLogDetail(row as LogTableRow)">
+                      {{ isExpanded(row as LogTableRow) ? '收起' : '详情' }}
+                    </ElButton>
+                  </template>
+                </ElTableColumn>
+              </ElTable>
+            </div>
           </template>
-        </ElTableColumn>
-        <ElTableColumn prop="time" label="时间" width="190" />
-        <ElTableColumn prop="ns" label="命名空间" width="140" />
-        <ElTableColumn prop="pod" label="Pod" min-width="220" show-overflow-tooltip />
-        <ElTableColumn prop="container" label="容器" width="180" show-overflow-tooltip />
-        <ElTableColumn prop="msg" label="摘要" min-width="420" show-overflow-tooltip />
-        <ElTableColumn label="操作" width="90" fixed="right">
-          <template #default="{ row }">
-            <ElButton link type="primary" @click="toggleLogDetail(row as LogTableRow)">
-              {{ isExpanded(row as LogTableRow) ? '收起' : '详情' }}
-            </ElButton>
-          </template>
-        </ElTableColumn>
-      </ElTable>
+        </main>
+        </div>
+      </section>
     </template>
-  </ElCard>
+  </div>
 </template>
 
 <script setup lang="ts">
   import { computed, inject, ref, watch } from 'vue'
-  import { ElMessage } from 'element-plus'
-  import { fetchDatasourceList, resolveDatasourceUrl, type DatasourceItem } from '@/api/datasource'
+  import { useRouter } from 'vue-router'
+  import {
+    Search,
+    Document,
+    Download,
+    Link,
+    Fold,
+    Expand,
+    Hide,
+    View
+  } from '@element-plus/icons-vue'
+  import {
+    fetchDatasourceList,
+    resolveDatasourceUrl,
+    type DatasourceItem,
+    type DatasourceSubType
+  } from '@/api/datasource'
   import { kubeProxyAxios } from '@/api/kubeProxy'
   import { fetchK8sService, fetchK8sServiceList, type K8sService } from '@/api/kubernetes/service'
   import { clusterDetailContextKey } from './context'
 
+  const router = useRouter()
+
   defineOptions({ name: 'ClusterDetailLogs' })
+
+  const props = withDefaults(
+    defineProps<{
+      /** 监控页：占位态使用紧凑卡片 */
+      compactPlaceholder?: boolean
+    }>(),
+    {
+      compactPlaceholder: false
+    }
+  )
+  const emit = defineEmits<{
+    datasourceStateChange: [hasConfiguredDatasource: boolean]
+  }>()
 
   type ParsedDatasourceEndpoint = {
     serviceName: string
@@ -289,8 +504,21 @@
   }
 
   const ctxRef = inject(clusterDetailContextKey)!
+  const resultPanelTab = ref<'logs' | 'chart'>('logs')
+  const resultViewMode = ref<'raw' | 'table'>('raw')
+  const fieldSearch = ref('')
+  const isFieldsCollapsed = ref(false)
+  const showLineNumber = ref(true)
+  const showLogTime = ref(true)
+  const wordWrap = ref(true)
+  const showTrendChart = ref(true)
 
   const operatorOptions: LokiLabelOperator[] = ['=', '!=', '=~', '!~']
+  const subTypeMeta: Record<DatasourceSubType, { label: string; icon: string }> = {
+    loki: { label: 'Loki', icon: 'simple-icons:grafana' },
+    es: { label: 'Elasticsearch', icon: 'simple-icons:elasticsearch' },
+    prometheus: { label: 'Prometheus', icon: 'simple-icons:prometheus' }
+  }
 
   const datasourceLoading = ref(false)
   const resolving = ref(false)
@@ -300,7 +528,7 @@
 
   const datasourceOptions = ref<DatasourceItem[]>([])
   const selectedDatasourceId = ref<number>()
-  const timeRangeMinutes = ref(60)
+  const timeRangeMinutes = ref(15)
   const lineLimit = ref(200)
   const keyword = ref('')
   const queryDraft = ref('{namespace=~".+"}')
@@ -324,29 +552,52 @@
   )
   const isLokiDatasource = computed(() => selectedDatasource.value?.subType === 'loki')
   const isEsDatasource = computed(() => selectedDatasource.value?.subType === 'es')
-  const datasourceUrlText = computed(() =>
-    selectedDatasource.value ? resolveDatasourceUrl(selectedDatasource.value) : '-'
-  )
-  const queryBuilderTitle = computed(() => (isLokiDatasource.value ? '标签过滤' : 'ES 查询'))
+  const filteredFieldKeys = computed(() => {
+    const kw = fieldSearch.value.trim().toLowerCase()
+    const keys = labelKeys.value
+    if (!kw) return keys
+    return keys.filter((item) => item.toLowerCase().includes(kw))
+  })
+  const trendBucketCount = computed(() => {
+    const minutes = timeRangeMinutes.value
+    if (minutes <= 15) return 15
+    if (minutes <= 60) return 12
+    if (minutes <= 360) return 18
+    return 24
+  })
+  const trendChartData = computed(() => {
+    const bucketCount = trendBucketCount.value
+    const rangeMs = timeRangeMinutes.value * 60 * 1000
+    const end = Date.now()
+    const start = end - rangeMs
+    const bucketMs = rangeMs / bucketCount
+
+    const buckets = Array.from({ length: bucketCount }, (_, index) => {
+      const bucketStart = start + index * bucketMs
+      return {
+        key: `${bucketStart}-${index}`,
+        label: formatTrendAxisLabel(bucketStart),
+        count: 0
+      }
+    })
+
+    for (const row of logs.value) {
+      const timestamp = parseLogTime(row.time)
+      if (timestamp == null) continue
+      const index = Math.floor((timestamp - start) / bucketMs)
+      if (index >= 0 && index < buckets.length) {
+        buckets[index].count += 1
+      }
+    }
+
+    return buckets
+  })
+  const maxTrendCount = computed(() => Math.max(...trendChartData.value.map((item) => item.count), 1))
   const queryDraftPlaceholder = computed(() =>
     isLokiDatasource.value
       ? '支持手写 LogQL，例如 {namespace="default"} |= "error"'
       : '支持 Lucene query_string，例如 kubernetes.namespace_name:"default" AND error'
   )
-  const serviceText = computed(() => {
-    const name = resolvedService.value?.metadata?.name
-    if (!name || !resolvedServiceNamespace.value) return '-'
-    const port = resolvedEndpoint.value?.port
-    return `${name}.${resolvedServiceNamespace.value}.svc${port ? `:${port}` : ''}`
-  })
-  const proxyTargetText = computed(() => {
-    const name = resolvedService.value?.metadata?.name
-    const endpoint = resolvedEndpoint.value
-    if (!name || !endpoint?.port || !resolvedServiceNamespace.value) return '-'
-    const requestPath = isEsDatasource.value ? '/_search' : '/loki/api/v1/query_range'
-    return `${name}:${endpoint.port} /api/v1/namespaces/${resolvedServiceNamespace.value}/services/${name}:${endpoint.port}/proxy${endpoint.basePath}${requestPath}`
-  })
-
   const generatedQuery = computed(() => {
     if (isEsDatasource.value) {
       return keyword.value.trim() || '*'
@@ -373,23 +624,13 @@
     queryDirty.value ? queryDraft.value.trim() : generatedQuery.value
   )
   const canQuery = computed(
-    () =>
-      Boolean(selectedDatasource.value) &&
-      Boolean(resolvedEndpoint.value) &&
-      Boolean(effectiveQuery.value)
+    () => Boolean(selectedDatasource.value) && Boolean(effectiveQuery.value.trim())
   )
-  const logAccessReady = computed(
-    () =>
-      Boolean(selectedDatasource.value) && Boolean(resolvedEndpoint.value) && !errorMessage.value
-  )
-  const logUnavailableTitle = computed(() => {
-    if (!datasourceOptions.value.length) return '未配置日志数据源'
-    if (!resolvedEndpoint.value) return '未找到可用日志 Service'
-    return '当前日志查询不可用'
+  const hasConfiguredDatasource = computed(() => datasourceOptions.value.length > 0)
+  const isPlaceholderState = computed(() => {
+    if (!props.compactPlaceholder) return false
+    return !detectResolved.value || !hasConfiguredDatasource.value
   })
-  const logUnavailableDescription = computed(
-    () => errorMessage.value || '请先完成日志查询前置条件'
-  )
   const emptyText = computed(() => {
     if (!effectiveQuery.value) {
       return isEsDatasource.value ? '请输入 ES 查询语句' : '请输入 LogQL 查询语句'
@@ -411,6 +652,19 @@
     queryDirty.value = false
   }
 
+  function addFieldFilter(key: string) {
+    if (!isLokiDatasource.value) return
+    if (filters.value.some((item) => item.key === key)) return
+    filters.value.push({
+      id: filterSeed.value++,
+      key,
+      operator: '=',
+      value: '',
+      options: [],
+      loading: false
+    })
+  }
+
   function addFilter() {
     filters.value.push({
       id: filterSeed.value++,
@@ -426,10 +680,20 @@
     filters.value = filters.value.filter((item) => item.id !== id)
   }
 
+  function getDatasourceById(id: number) {
+    return datasourceOptions.value.find((item) => item.id === id) ?? null
+  }
+
   function onFilterKeyChange(filter: FilterRow) {
     filter.value = ''
     filter.options = []
     void ensureFilterValues(filter)
+  }
+
+  function isIPAddress(hostname: string): boolean {
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) return true
+    if (hostname.includes(':') && !hostname.includes('.')) return true
+    return false
   }
 
   function normalizeBasePath(pathname: string): string {
@@ -442,6 +706,7 @@
     if (!rawUrl) return null
     try {
       const parsed = new URL(rawUrl)
+      if (isIPAddress(parsed.hostname)) return null
       const protocol =
         parsed.protocol === 'https:' ? 'https' : parsed.protocol === 'http:' ? 'http' : null
       if (!protocol) return null
@@ -484,21 +749,35 @@
   async function loadDatasources() {
     datasourceLoading.value = true
     try {
-      const { items } = await fetchDatasourceList({ page: 1, limit: 200 })
+      const { items } = await fetchDatasourceList({ 
+        page: 1, 
+        limit: 200,
+        clusterName: currentCluster.value,
+        type: 0
+      })
       datasourceOptions.value = items.filter(
-        (item) =>
-          item.clusterName === currentCluster.value &&
-          item.type === 0 &&
-          (item.subType === 'loki' || item.subType === 'es')
+        (item) => (item.subType === 'loki' || item.subType === 'es')
       )
-      selectedDatasourceId.value =
-        datasourceOptions.value.find((item) => item.isDefault)?.id ?? datasourceOptions.value[0]?.id
+      if (datasourceOptions.value.length > 0) {
+        selectedDatasourceId.value =
+          datasourceOptions.value.find((item) => item.isDefault)?.id ?? datasourceOptions.value[0]?.id
+      } else {
+        selectedDatasourceId.value = undefined
+        errorMessage.value = ''
+        resolvedService.value = null
+        resolvedServiceNamespace.value = ''
+        resolvedEndpoint.value = null
+        labelKeys.value = []
+        labelValueCache.value = {}
+        logs.value = []
+        expandedRowKeys.value = []
+      }
     } finally {
       datasourceLoading.value = false
     }
   }
 
-  async function resolveServiceByEndpoint(endpoint: ParsedDatasourceEndpoint): Promise<{
+  async function resolveServiceByEndpoint(endpoint: ParsedDatasourceEndpoint, skipErrorNotification = false): Promise<{
     service: K8sService
     namespace: string
   }> {
@@ -507,13 +786,18 @@
         service: await fetchK8sService(
           currentCluster.value,
           endpoint.namespace,
-          endpoint.serviceName
+          endpoint.serviceName,
+          skipErrorNotification
         ),
         namespace: endpoint.namespace
       }
     }
 
-    const { items } = await fetchK8sServiceList(currentCluster.value, { page: 1, limit: 999999 })
+    const { items } = await fetchK8sServiceList(currentCluster.value, { 
+      page: 1, 
+      limit: 999999, 
+      skipErrorNotification 
+    })
     const matchedItems = items.filter((item) => item.metadata?.name === endpoint.serviceName)
     if (matchedItems.length > 1) {
       const names = matchedItems
@@ -554,6 +838,7 @@
       filter.options = labelValueCache.value[key]
       return
     }
+    if (!(await ensureServiceResolved(true))) return
 
     const url = serviceProxyBase(`/loki/api/v1/label/${encodeURIComponent(key)}/values`)
     if (!url) return
@@ -580,18 +865,26 @@
     }
   }
 
-  async function resolveServiceContext() {
+  async function resolveServiceContext(
+    skipErrorNotification = false,
+    options: { resetState?: boolean } = {}
+  ) {
+    const { resetState = true } = options
+    if (datasourceOptions.value.length === 0) return
+
     const datasource = selectedDatasource.value
     const rawUrl = datasource ? resolveDatasourceUrl(datasource) : ''
 
-    errorMessage.value = ''
-    resolvedService.value = null
-    resolvedServiceNamespace.value = ''
-    resolvedEndpoint.value = null
-    labelKeys.value = []
-    labelValueCache.value = {}
-    logs.value = []
-    expandedRowKeys.value = []
+    if (resetState) {
+      errorMessage.value = ''
+      resolvedService.value = null
+      resolvedServiceNamespace.value = ''
+      resolvedEndpoint.value = null
+      labelKeys.value = []
+      labelValueCache.value = {}
+      logs.value = []
+      expandedRowKeys.value = []
+    }
 
     if (!datasource) return
     if (!rawUrl) {
@@ -607,7 +900,7 @@
 
     resolving.value = true
     try {
-      const { service, namespace } = await resolveServiceByEndpoint(endpoint)
+      const { service, namespace } = await resolveServiceByEndpoint(endpoint, skipErrorNotification)
       resolvedService.value = service
       resolvedServiceNamespace.value = namespace
       resolvedEndpoint.value = endpoint
@@ -615,19 +908,42 @@
         await loadLabelKeys()
       }
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : '解析日志 Service 失败'
+      const errorMsg = error instanceof Error ? error.message : '解析日志 Service 失败'
+      // 不显示 service not found 类型的错误信息
+      if (!errorMsg.toLowerCase().includes('not found') && !errorMsg.toLowerCase().includes('services')) {
+        errorMessage.value = errorMsg
+      }
     } finally {
       resolving.value = false
     }
   }
 
-  async function refreshContext() {
+  async function ensureServiceResolved(skipErrorNotification = false): Promise<boolean> {
+    if (resolvedService.value && resolvedEndpoint.value) return true
+    await resolveServiceContext(skipErrorNotification, { resetState: false })
+    return Boolean(resolvedEndpoint.value)
+  }
+
+  async function refreshContext(skipErrorNotification = false, resolveService = false) {
     detectResolved.value = false
     await loadDatasources()
-    if (selectedDatasource.value) {
-      await resolveServiceContext()
+    if (resolveService && datasourceOptions.value.length > 0 && selectedDatasource.value) {
+      await resolveServiceContext(skipErrorNotification)
+    } else {
+      errorMessage.value = ''
+      resolvedService.value = null
+      resolvedServiceNamespace.value = ''
+      resolvedEndpoint.value = null
+      labelKeys.value = []
+      labelValueCache.value = {}
+      logs.value = []
+      expandedRowKeys.value = []
     }
     detectResolved.value = true
+  }
+
+  function goToDatasource() {
+    router.push('/monitor/datasource')
   }
 
   function formatNsTimestamp(ns: string): string {
@@ -642,6 +958,23 @@
     if (Number.isNaN(date.getTime())) return String(timestamp)
     const pad = (value: number, size = 2) => String(value).padStart(size, '0')
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`
+  }
+
+  function formatTrendAxisLabel(timestamp: number): string {
+    const date = new Date(timestamp)
+    const pad = (value: number, size = 2) => String(value).padStart(size, '0')
+    return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`
+  }
+
+  function parseLogTime(text: string): number | null {
+    const match = text.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{3})$/)
+    if (match) {
+      const [, date, hour, minute, second, millisecond] = match
+      const parsed = new Date(`${date}T${hour}:${minute}:${second}.${millisecond}`)
+      return Number.isNaN(parsed.getTime()) ? null : parsed.getTime()
+    }
+    const parsed = new Date(text)
+    return Number.isNaN(parsed.getTime()) ? null : parsed.getTime()
   }
 
   function parseRequestError(error: unknown): string {
@@ -676,6 +1009,7 @@
 
     loading.value = true
     try {
+      if (!(await ensureServiceResolved())) return
       if (isEsDatasource.value) {
         await loadEsLogs()
       } else {
@@ -936,247 +1270,270 @@
   })
 
   watch(
+    hasConfiguredDatasource,
+    (value) => {
+      emit('datasourceStateChange', value)
+    },
+    { immediate: true }
+  )
+
+  // 只在集群变化时刷新整个上下文，避免重复请求
+  watch(
     currentCluster,
     async () => {
       queryDirty.value = false
       queryDraft.value = generatedQuery.value
       filters.value = []
-      await refreshContext()
+      await refreshContext(true, false)
     },
     { immediate: true }
   )
 
-  watch(selectedDatasourceId, async () => {
-    filters.value = []
-    queryDirty.value = false
-    queryDraft.value = generatedQuery.value
-    await resolveServiceContext()
+  // 只在手动切换数据源时更新 service 上下文
+  watch(selectedDatasourceId, (newVal, oldVal) => {
+    if (datasourceOptions.value.length > 0 && oldVal !== undefined && newVal !== oldVal) {
+      filters.value = []
+      queryDirty.value = false
+      queryDraft.value = generatedQuery.value
+      errorMessage.value = ''
+      resolvedService.value = null
+      resolvedServiceNamespace.value = ''
+      resolvedEndpoint.value = null
+      labelKeys.value = []
+      labelValueCache.value = {}
+      logs.value = []
+      expandedRowKeys.value = []
+    }
   })
 </script>
 
 <style scoped>
-  .logs-page {
-    min-height: 100%;
-  }
-
-  .logs-unavailable-state {
-    min-height: 420px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px 0;
-  }
-
-  .logs-loading-state {
-    min-height: 220px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px 0;
-  }
-
-  .logs-loading-card {
-    width: 100%;
-    min-height: 160px;
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: 16px;
-    background: linear-gradient(180deg, #fffaf0 0%, #fffdf8 100%);
-  }
-
-  .logs-unavailable-card {
-    width: min(820px, 100%);
-    padding: 32px 28px;
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: 16px;
-    background: linear-gradient(180deg, #fffaf0 0%, #fffdf8 100%);
-    box-shadow: 0 10px 30px rgb(0 0 0 / 4%);
-    text-align: center;
-  }
-
-  .logs-unavailable-icon {
-    width: 52px;
-    height: 52px;
-    margin: 0 auto 16px;
-    border-radius: 999px;
-    background: #fff1cc;
-    color: #d97706;
-    font-size: 28px;
-    font-weight: 700;
-    line-height: 52px;
-  }
-
-  .logs-unavailable-title {
-    font-size: 22px;
-    font-weight: 600;
-    color: #b45309;
-  }
-
-  .logs-unavailable-desc {
-    margin-top: 12px;
-    font-size: 14px;
-    line-height: 1.7;
-    color: #92400e;
-    word-break: break-word;
-  }
-
-  .logs-unavailable-guide {
-    margin-top: 20px;
-    padding: 18px 20px;
-    border-radius: 12px;
-    background: rgb(255 255 255 / 72%);
-    color: #7c2d12;
-    text-align: left;
-    line-height: 1.8;
-  }
-
-  .logs-unavailable-guide code {
-    padding: 2px 6px;
-    border-radius: 6px;
-    background: #fff3d6;
-    color: #9a3412;
-    font-family: Consolas, 'Courier New', monospace;
-  }
-
-  .page-hd {
-    font-size: 15px;
-    font-weight: 600;
-  }
-
-  .page-hd-desc {
-    margin-top: 6px;
-    font-size: 13px;
-    color: var(--el-text-color-secondary);
-  }
-
-  .page-hd-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 24px;
-    flex-wrap: wrap;
-  }
-
-  .page-hd-main {
+  .logs-console {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    flex: 0 0 auto;
+    margin-top: 0;
+    gap: 20px;
   }
 
-  .page-hd-actions {
-    display: flex;
-    align-items: flex-start;
-    justify-content: flex-end;
-    flex: 1 1 720px;
-    min-width: 0;
-  }
-
-  .page-hd-actions__stack {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 8px;
-    margin-left: auto;
-    min-width: 0;
-  }
-
-  .page-hd-actions__right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    margin-left: auto;
-  }
-
-  .logs-toolbar-datasource {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    min-width: 0;
-    justify-content: flex-end;
-  }
-
-  .logs-toolbar-datasource__label {
-    font-size: 13px;
-    color: var(--el-text-color-secondary);
-    white-space: nowrap;
-  }
-
-  .logs-toolbar-datasource__select {
-    width: 240px;
-    max-width: 100%;
-  }
-
-  .logs-toolbar-datasource__url {
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 12px;
-    color: #92400e;
-  }
-
-  .logs-time-range {
-    width: 180px;
-  }
-
-  .logs-limit-input {
-    width: 148px;
-  }
-
-  .logs-datasource-type-tag {
-    padding: 1px 8px;
-    border-radius: 999px;
-    font-size: 12px;
-    border: 1px solid #f3d5a2;
-    background: #fff7e8;
-    color: #92400e;
-  }
-
-  .logs-datasource-badge {
-    padding: 1px 8px;
-    border-radius: 999px;
-    font-size: 12px;
-    background: #d97706;
-    color: #fff;
-  }
-
-  .logs-builder {
-    padding: 14px 14px 12px;
-    margin-bottom: 12px;
-    border: 1px solid var(--el-border-color-lighter);
+  .logs-console.logs-console--placeholder {
+    flex: none !important;
+    align-self: stretch;
+    gap: 0;
+    border: 1px solid var(--el-border-color-light);
     border-radius: 8px;
-    background: color-mix(in srgb, var(--el-fill-color-light) 60%, transparent);
+    background: var(--el-bg-color);
+    overflow: hidden;
   }
 
-  .logs-builder__header {
+  .logs-console__top-card,
+  .logs-console__results {
+    border: none;
+    border-radius: 8px;
+    background: var(--el-bg-color);
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgb(15 23 42 / 0.05);
+  }
+
+  .logs-console__rule-bar {
+    padding: 12px 16px;
+    background: var(--el-fill-color-blank);
+  }
+
+  .logs-console__rule-main {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .logs-console__rule-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .logs-console__external-link {
+    font-size: 12px;
+  }
+
+  .logs-console__external-link-icon {
+    margin-left: 4px;
+  }
+
+  .logs-console__rule-label {
+    font-size: 13px;
+    color: var(--el-text-color-regular);
+    white-space: nowrap;
+  }
+
+  .logs-console__rule-select {
+    width: 220px;
+    max-width: 100%;
+  }
+
+  .logs-console__datasource-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .logs-console__datasource-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    background: var(--el-fill-color-light);
+    color: var(--el-text-color-secondary);
+    flex: none;
+  }
+
+  .logs-console__datasource-logo.is-loki {
+    color: #f59e0b;
+    background: #fff7ed;
+  }
+
+  .logs-console__datasource-logo.is-es {
+    color: #2563eb;
+    background: #eff6ff;
+  }
+
+  .logs-console__datasource-logo.is-prometheus {
+    color: #f97316;
+    background: #fff7ed;
+  }
+
+  .logs-console__datasource-logo-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .logs-console__datasource-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .logs-console__query-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-top: 20px;
     margin-bottom: 12px;
     flex-wrap: wrap;
   }
 
-  .logs-builder__title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--el-text-color-primary);
+  .logs-console__query-toolbar-left,
+  .logs-console__query-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    min-height: 20px;
   }
 
-  .logs-builder__empty {
-    padding: 8px 0 12px;
-    font-size: 13px;
+  .logs-console__query-toolbar-right {
+    justify-content: flex-end;
+  }
+
+  .logs-console__query-mode {
+    margin-right: 2px;
+    font-size: 12px;
+    color: var(--el-text-color-primary);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .logs-console__query-toolbar-left :deep(.el-button),
+  .logs-console__query-toolbar-right :deep(.el-button),
+  .logs-console__main-toolbar :deep(.el-button) {
+    height: auto !important;
+    padding: 0 !important;
+    font-size: 12px !important;
+    line-height: 1.2 !important;
     color: var(--el-text-color-secondary);
+    white-space: nowrap;
+  }
+
+  .logs-console__query-toolbar-left :deep(.el-button.is-disabled),
+  .logs-console__query-toolbar-right :deep(.el-button.is-disabled),
+  .logs-console__main-toolbar :deep(.el-button.is-disabled) {
+    opacity: 1;
+    color: var(--el-text-color-secondary);
+  }
+
+  .logs-console__hot-tag {
+    display: inline-flex;
+    align-items: center;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 2px;
+    background: #f56c6c;
+    color: #fff;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 600;
+    transform: translateY(-1px);
+  }
+
+  .logs-console__query-body {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: nowrap;
+  }
+
+  .logs-query-input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .logs-query-input :deep(.el-input__wrapper) {
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 13px;
+  }
+
+  .logs-console__query-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  .logs-console__query-link {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--el-color-primary);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .logs-console__query-link:hover {
+    opacity: 0.85;
+  }
+
+  .logs-time-range {
+    width: 140px;
+    flex: none;
+  }
+
+  .logs-search-btn {
+    flex: none;
+    min-width: 88px;
   }
 
   .logs-filter-list {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    margin-top: 10px;
   }
 
   .logs-filter-row {
@@ -1199,77 +1556,548 @@
     max-width: 100%;
   }
 
-  .logs-builder__meta {
+  .logs-console__results {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px 14px;
+    flex-direction: column;
+    min-height: 420px;
+    flex: 1;
+  }
+
+  .logs-console__results-tabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+    padding: 12px 16px 0 12px;
+    border-bottom: 1px solid var(--el-border-color-lighter);
+    background: var(--el-fill-color-blank);
+  }
+
+  .logs-console__results-body {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    flex: 1;
+    min-height: 0;
+  }
+
+  .logs-console__results.is-fields-collapsed .logs-console__results-body {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .logs-console__fields {
+    padding: 12px;
+    background: var(--el-fill-color-blank);
+    overflow: auto;
+    position: relative;
+  }
+
+  .logs-console__fields.is-collapsed {
+    padding: 12px 6px;
+    overflow: hidden;
+  }
+
+  .logs-console__fields::after {
+    content: '';
+    position: absolute;
+    top: 12px;
+    right: 0;
+    bottom: 12px;
+    width: 1px;
+    background: var(--el-border-color-lighter);
+    pointer-events: none;
+  }
+
+  .logs-console__fields-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  .logs-console__fields-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--el-text-color-primary);
+    margin-bottom: 0;
+  }
+
+  .logs-console__fields-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    margin-left: auto;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--el-text-color-secondary);
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .logs-console__fields-toggle:hover {
+    background: var(--el-fill-color-light);
+    color: var(--el-color-primary);
+  }
+
+  .logs-console__fields.is-collapsed .logs-console__fields-header {
+    justify-content: center;
+    margin-bottom: 0;
+  }
+
+  .logs-console__fields.is-collapsed .logs-console__fields-toggle {
+    margin-left: 0;
+  }
+
+  .logs-console__fields-search {
+    margin-bottom: 12px;
+  }
+
+  .logs-console__fields-search :deep(.el-input__wrapper) {
+    min-height: 30px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+
+  .logs-console__fields-search :deep(.el-input__inner) {
+    font-size: 12px;
+  }
+
+  .logs-console__fields-search :deep(.el-input__inner::placeholder) {
+    font-size: 11px;
+  }
+
+  .logs-console__fields-group + .logs-console__fields-group {
     margin-top: 14px;
   }
 
-  .logs-builder__meta-item {
+  .logs-console__fields-group-title {
+    margin-bottom: 8px;
     font-size: 12px;
     color: var(--el-text-color-secondary);
-    font-family: Consolas, 'Courier New', monospace;
   }
 
-  .logs-query-row {
+  .logs-console__field-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-top: 14px;
-  }
-
-  .logs-search {
-    width: 320px;
-    max-width: 100%;
-  }
-
-  .logs-query-editor-wrap {
-    flex: 1;
-    min-width: 280px;
-    display: flex;
-    align-items: center;
+    justify-content: space-between;
     gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--el-text-color-regular);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
   }
 
-  .logs-query-editor {
+  .logs-console__field-name {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: Consolas, 'Courier New', monospace;
   }
 
-  .logs-query-editor :deep(.el-input__wrapper) {
-    padding: 8px 12px;
-    min-height: 36px;
-    font-family: Consolas, 'Courier New', monospace;
+  .logs-console__field-type {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+    background: var(--el-fill-color);
+    color: var(--el-text-color-secondary);
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+    font-family: sans-serif;
+  }
+
+  .logs-console__field-item:hover {
+    background: var(--el-fill-color-light);
+    color: var(--el-color-primary);
+  }
+
+  .logs-console__fields-empty {
+    font-size: 12px;
+    color: var(--el-text-color-placeholder);
+  }
+
+  .logs-console__main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--el-bg-color);
+  }
+
+  .logs-console__main-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--el-border-color-lighter);
+  }
+
+  .logs-console__main-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .logs-console__view-mode {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .logs-view-segment {
+    display: inline-flex;
+    align-items: stretch;
+  }
+
+  .logs-view-segment__item {
+    position: relative;
+    min-width: 52px;
+    height: 24px;
+    padding: 0 14px;
+    border: 1px solid var(--el-border-color);
+    margin-left: -1px;
+    background: var(--el-bg-color);
+    color: var(--el-text-color-regular);
+    font-size: 12px;
+    line-height: 22px;
+    cursor: pointer;
+  }
+
+  .logs-view-segment__item:first-child {
+    margin-left: 0;
+    border-radius: 2px 0 0 2px;
+  }
+
+  .logs-view-segment__item:last-child {
+    border-radius: 0 2px 2px 0;
+  }
+
+  .logs-view-segment__item.is-active {
+    z-index: 1;
+    color: var(--el-color-primary);
+    border-color: var(--el-color-primary);
+    background: var(--el-bg-color);
+  }
+
+  .logs-console__display-options {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .logs-console__display-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--el-text-color-regular);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .logs-console__display-check :deep(.el-checkbox) {
+    height: auto;
+  }
+
+  .logs-console__display-check :deep(.el-checkbox__label) {
+    padding-left: 6px;
     font-size: 12px;
     line-height: 1.5;
-    color: var(--el-color-success);
-    background: var(--el-fill-color-darker);
+    color: var(--el-text-color-regular);
   }
 
-  .logs-query-editor :deep(input) {
-    color: var(--el-color-success);
+  .logs-console__result-tab {
+    padding: 0 0 10px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    color: var(--el-text-color-regular);
+    cursor: pointer;
+    position: relative;
   }
 
-  .logs-query-reset {
+  .logs-console__result-tab.is-active {
+    color: var(--el-color-primary);
+    font-weight: 500;
+  }
+
+  .logs-console__result-tab.is-active::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    background: var(--el-color-primary);
+  }
+
+  .logs-console__main-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .logs-console__count {
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+    white-space: nowrap;
+  }
+
+  .logs-trend-chart {
+    width: 100%;
+  }
+
+  .logs-trend-chart__panel {
+    position: relative;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 4px;
+    background: var(--el-fill-color-blank);
+    overflow: hidden;
+  }
+
+  .logs-trend-chart__panel.is-large {
+    width: 100%;
+  }
+
+  .logs-trend-chart__panel.is-large .logs-trend-chart__bars {
+    height: 180px;
+  }
+
+  .logs-trend-chart__toggle,
+  .logs-trend-chart__show {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: none;
+    background: transparent;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .logs-trend-chart__toggle {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    z-index: 1;
+  }
+
+  .logs-trend-chart__show {
+    padding: 4px 0;
+    color: var(--el-color-primary);
+  }
+
+  .logs-trend-chart__toggle:hover,
+  .logs-trend-chart__show:hover {
+    color: var(--el-color-primary);
+  }
+
+  .logs-trend-chart__plot {
+    padding: 28px 12px 8px;
+  }
+
+  .logs-trend-chart__bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 88px;
+    border-bottom: 1px solid var(--el-border-color);
+    overflow-x: auto;
+  }
+
+  .logs-trend-chart__bar-wrap {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: stretch;
+    min-width: 28px;
+    height: 100%;
+  }
+
+  .logs-trend-chart__bar {
+    width: 100%;
+    min-height: 0;
+    border-radius: 1px 1px 0 0;
+    background: var(--el-color-primary);
+    opacity: 0.85;
+  }
+
+  .logs-trend-chart__axis {
+    display: flex;
+    align-items: flex-start;
+    gap: 2px;
+    margin-top: 6px;
+    overflow-x: auto;
+  }
+
+  .logs-trend-chart__axis-label {
+    flex: 1;
+    min-width: 28px;
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--el-text-color-regular);
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  .logs-console__chart-panel {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    min-height: 280px;
+  }
+
+  .logs-console__content {
+    flex: 1;
+    min-height: 280px;
+    overflow: auto;
+  }
+
+  .logs-raw-list {
+    padding: 8px 0;
+    font-size: 12px;
+    line-height: 23px;
+    color: var(--el-text-color-regular);
+  }
+
+  .logs-raw-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 4px 14px;
+    border-bottom: 1px solid var(--el-border-color-extra-light);
+    color: var(--el-text-color-regular);
+  }
+
+  .logs-raw-line:hover {
+    background: var(--el-fill-color-light);
+  }
+
+  .logs-raw-line.is-wrap .logs-raw-line__msg {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .logs-raw-line__no {
     flex: none;
+    width: 36px;
+    color: var(--el-text-color-regular);
+    text-align: right;
+  }
+
+  .logs-raw-line__time {
+    flex: none;
+    width: 190px;
+    color: var(--el-text-color-regular);
+  }
+
+  .logs-raw-line__msg {
+    flex: 1;
+    min-width: 0;
+    color: var(--el-text-color-regular);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .logs-loading-state,
+  .logs-unavailable-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 260px;
+    padding: 56px 24px 48px;
+    text-align: center;
+  }
+
+  .logs-loading-card {
+    width: 100%;
+    min-height: 120px;
+  }
+
+  .logs-unavailable-icon {
+    margin-bottom: 12px;
+    color: var(--el-color-primary);
+  }
+
+  .logs-unavailable-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--el-text-color-primary);
+  }
+
+  .logs-unavailable-desc {
+    margin-top: 10px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--el-text-color-secondary);
+  }
+
+  .logs-unavailable-btn.el-button {
+    margin-top: 16px;
+    flex: none;
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 14px !important;
+    font-size: 12px;
+    line-height: 1 !important;
+    border-radius: 0 !important;
+  }
+
+  .logs-unavailable-btn.el-button > span {
+    line-height: 1;
   }
 
   .logs-empty {
-    padding: 18px 0;
+    padding: 24px 14px;
     color: var(--el-text-color-secondary);
     font-size: 13px;
+    text-align: center;
   }
 
   .logs-table :deep(.el-table__expanded-cell) {
     padding: 0;
-    background: #131a22;
+    background: var(--el-fill-color-darker);
+  }
+
+  .logs-table :deep(.el-table__body td.el-table__cell) {
+    font-size: 12px;
+    color: var(--el-text-color-regular);
+  }
+
+  .logs-table :deep(.el-button.is-link) {
+    font-size: 12px;
+    padding: 0;
   }
 
   .logs-inline-detail {
     padding: 16px 18px;
-    border-left: 3px solid #73bf69;
-    background: linear-gradient(180deg, rgba(20, 26, 33, 0.98) 0%, rgba(15, 20, 26, 0.98) 100%);
+    border-left: 3px solid var(--el-color-success);
+    background: var(--el-fill-color-darker);
   }
 
   .logs-inline-detail__section + .logs-inline-detail__section {
@@ -1280,14 +2108,13 @@
     margin-bottom: 10px;
     font-size: 13px;
     font-weight: 600;
-    color: #c7d0d9;
+    color: var(--el-text-color-primary);
   }
 
   .logs-field-list {
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--el-border-color-light);
     border-radius: 6px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.02);
   }
 
   .logs-field-item {
@@ -1297,7 +2124,7 @@
     padding: 8px 12px;
     font-size: 12px;
     line-height: 1.6;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--el-border-color-lighter);
   }
 
   .logs-field-item:first-child {
@@ -1305,12 +2132,12 @@
   }
 
   .logs-field-item__key {
-    color: #8fa2b7;
+    color: var(--el-text-color-secondary);
     font-family: Consolas, 'Courier New', monospace;
   }
 
   .logs-field-item__value {
-    color: #e6edf3;
+    color: var(--el-text-color-primary);
     word-break: break-word;
   }
 
@@ -1321,42 +2148,38 @@
     word-break: break-word;
     font-size: 12px;
     line-height: 1.6;
-    color: #e6edf3;
+    color: var(--el-text-color-primary);
     font-family: Consolas, 'Courier New', monospace;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--el-border-color-light);
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--el-fill-color-blank);
   }
 
-  @media (max-width: 768px) {
-    .page-hd-actions__stack {
-      width: 100%;
-      align-items: stretch;
-      margin-left: 0;
+  @media (max-width: 960px) {
+    .logs-console__query-body {
+      flex-wrap: wrap;
     }
 
-    .page-hd-actions {
-      width: 100%;
+    .logs-query-input {
       flex: 1 1 100%;
     }
 
-    .page-hd-actions__right {
-      justify-content: flex-start;
-      margin-left: 0;
-    }
-
-    .logs-toolbar-datasource {
-      align-items: stretch;
-      justify-content: flex-start;
-    }
-
-    .logs-toolbar-datasource__select,
     .logs-time-range {
-      width: 100%;
+      flex: 1;
+      min-width: 120px;
     }
 
-    .logs-toolbar-datasource__url {
-      max-width: 100%;
+    .logs-console__results-body {
+      grid-template-columns: 1fr;
+    }
+
+    .logs-console__fields {
+      border-bottom: 1px solid var(--el-border-color-lighter);
+      max-height: 220px;
+    }
+
+    .logs-console__fields::after {
+      display: none;
     }
   }
 </style>

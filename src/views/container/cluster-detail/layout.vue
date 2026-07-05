@@ -149,6 +149,13 @@
             <ElMenuItem index="storage">存储</ElMenuItem>
           </ElSubMenu>
 
+          <ElSubMenu index="group-app">
+            <template #title>
+              <span>应用资源</span>
+            </template>
+            <ElMenuItem index="helm">Helm</ElMenuItem>
+          </ElSubMenu>
+
           <ElSubMenu index="group-ops">
             <template #title>
               <span>运维中心</span>
@@ -221,8 +228,8 @@
   const settingStore = useSettingStore()
   const { getMenuTheme } = storeToRefs(settingStore)
 
-  /** 默认展开「资源对象」「运维中心」「监控告警」 */
-  const DEFAULT_SUBMENU_OPENEDS: string[] = ['group-resource', 'group-ops', 'group-monitor']
+  /** 默认展开「资源对象」「应用资源」「运维中心」「监控告警」 */
+  const DEFAULT_SUBMENU_OPENEDS: string[] = ['group-resource', 'group-app', 'group-ops', 'group-monitor']
 
   const DETAIL_SEGMENTS = new Set([
     'overview',
@@ -233,6 +240,7 @@
     'services',
     'config',
     'storage',
+    'helm',
     'autoscaling',
     'auth',
     'addon-components',

@@ -49,12 +49,7 @@
       />
     </ElCard>
 
-    <DatasourceDrawer
-      v-model="drawerVisible"
-      :edit-id="editId"
-      external-only
-      @success="refreshData"
-    />
+    <DatasourceDrawer v-model="drawerVisible" :edit-id="editId" @success="refreshData" />
   </div>
 </template>
 
@@ -149,20 +144,16 @@
     core: {
       apiFn: async (params: { current: number; size: number; nameSelector?: string }) => {
         await loadClusterAliasMap()
-        const { items } = await fetchDatasourceList({
-          page: 1,
-          limit: 500,
+        const { items, total } = await fetchDatasourceList({
+          page: params.current,
+          limit: params.size,
           nameSelector: params.nameSelector
         })
-        const externalItems = items.filter((item) => item.external)
-        const current = params.current
-        const size = params.size
-        const start = (current - 1) * size
         return {
-          records: externalItems.slice(start, start + size),
-          total: externalItems.length,
-          current,
-          size
+          records: items,
+          total,
+          current: params.current,
+          size: params.size
         }
       },
       apiParams: {
@@ -215,6 +206,13 @@
               ])
             ])
           }
+        },
+        {
+          prop: 'external',
+          label: '外部数据源',
+          minWidth: 100,
+          formatter: (row: DatasourceItem) =>
+            h('span', { style: { fontSize: '12px' } }, row.external ? '是' : '否')
         },
         {
           prop: 'clusterName',

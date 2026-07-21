@@ -1011,14 +1011,37 @@
   async function handleDeleteNotifications() {
     const ids = selectedNotifications.value.map((n) => n.id)
     if (!ids.length) return
-    await confirmDelete(
+    ElMessageBox.confirm(
       `确定删除选中的 ${ids.length} 条告警历史记录吗？`,
-      async () => {
-        for (const id of ids) {
-          await fetchDeleteAlertNotification(id)
+      '提示',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+        beforeClose: async (action, instance, done) => {
+          if (action !== 'confirm') {
+            done()
+            return
+          }
+          instance.confirmButtonLoading = true
+          let failed = 0
+          for (const id of ids) {
+            try {
+              await fetchDeleteAlertNotification(id)
+            } catch {
+              failed++
+            }
+          }
+          instance.confirmButtonLoading = false
+          if (failed > 0) {
+            ElMessage.warning(`删除完成，${failed} 条失败`)
+          } else {
+            ElMessage.success('删除成功')
+          }
+          refreshNotificationData()
+          done()
         }
-      },
-      refreshNotificationData
+      }
     )
   }
 
@@ -1043,7 +1066,7 @@
           }
         },
         entries.map(([key, value]) =>
-          h(ElTag, { size: 'small', style: { margin: '1px 2px', fontSize: '11px' } }, () => `${key}=${value == null ? '' : String(value)}`)
+          h(ElTag, { size: 'small', type: 'info', style: { margin: '1px 2px', fontSize: '11px', color: '#606266' } }, () => `${key}=${value == null ? '' : String(value)}`)
         )
       )
     } catch {
@@ -1303,11 +1326,11 @@
   }
 
   .alert-toolbar__search {
-    width: 220px;
+    width: 280px;
   }
 
   .alert-toolbar__search--short {
-    width: 120px;
+    width: 160px;
   }
 
   .alert-toolbar__filter {

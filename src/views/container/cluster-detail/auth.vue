@@ -1,42 +1,61 @@
 <template>
-  <div class="services-page">
-    <ElCard class="art-table-card">
-      <ElTabs v-model="kind">
+  <div class="auth-page">
+    <div v-if="kind === 'clusterrole'" class="cluster-toolbar">
+      <ElButton v-ripple @click="onRbacGenerator">新建策略</ElButton>
+      <div class="cluster-toolbar__right">
+        <ElInput v-model="crSearchForm.name" clearable placeholder="请输入名称" class="cluster-toolbar__search" @keyup.enter="runCrSearch" @clear="runCrSearch" />
+        <div class="cluster-toolbar-search-btn" role="button" tabindex="0" title="搜索" @click="forceCrSearch" @keyup.enter="forceCrSearch">
+          <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
+        </div>
+        <ArtTableHeader v-model:columns="crColumnChecks" :loading="crLoading" layout="size,columns,settings" @refresh="onCrRefresh" />
+      </div>
+    </div>
+    <div v-else-if="kind === 'clusterrolebinding'" class="cluster-toolbar">
+      <ElButton v-ripple @click="onRbacGenerator">新建策略</ElButton>
+      <div class="cluster-toolbar__right">
+        <ElInput v-model="crbSearchForm.name" clearable placeholder="请输入名称" class="cluster-toolbar__search" @keyup.enter="runCrbSearch" @clear="runCrbSearch" />
+        <div class="cluster-toolbar-search-btn" role="button" tabindex="0" title="搜索" @click="forceCrbSearch" @keyup.enter="forceCrbSearch">
+          <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
+        </div>
+        <ArtTableHeader v-model:columns="crbColumnChecks" :loading="crbLoading" layout="size,columns,settings" @refresh="onCrbRefresh" />
+      </div>
+    </div>
+    <div v-else-if="kind === 'role'" class="cluster-toolbar">
+      <ElButton v-ripple @click="onRbacGenerator">新建策略</ElButton>
+      <div class="cluster-toolbar__right">
+        <ElInput v-model="roleSearchForm.name" clearable placeholder="请输入名称" class="cluster-toolbar__search" @keyup.enter="runRoleSearch" @clear="runRoleSearch" />
+        <div class="cluster-toolbar-search-btn" role="button" tabindex="0" title="搜索" @click="forceRoleSearch" @keyup.enter="forceRoleSearch">
+          <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
+        </div>
+        <ArtTableHeader v-model:columns="roleColumnChecks" :loading="roleLoading" layout="size,columns,settings" @refresh="onRoleRefresh" />
+      </div>
+    </div>
+    <div v-else-if="kind === 'rolebinding'" class="cluster-toolbar">
+      <ElButton v-ripple @click="onRbacGenerator">新建策略</ElButton>
+      <div class="cluster-toolbar__right">
+        <ElInput v-model="rbSearchForm.name" clearable placeholder="请输入名称" class="cluster-toolbar__search" @keyup.enter="runRbSearch" @clear="runRbSearch" />
+        <div class="cluster-toolbar-search-btn" role="button" tabindex="0" title="搜索" @click="forceRbSearch" @keyup.enter="forceRbSearch">
+          <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
+        </div>
+        <ArtTableHeader v-model:columns="rbColumnChecks" :loading="rbLoading" layout="size,columns,settings" @refresh="onRbRefresh" />
+      </div>
+    </div>
+    <div v-else class="cluster-toolbar">
+      <ElButton v-ripple @click="onRbacGenerator">新建策略</ElButton>
+      <div class="cluster-toolbar__right">
+        <ElInput v-model="saSearchForm.name" clearable placeholder="请输入名称" class="cluster-toolbar__search" @keyup.enter="runSaSearch" @clear="runSaSearch" />
+        <div class="cluster-toolbar-search-btn" role="button" tabindex="0" title="搜索" @click="forceSaSearch" @keyup.enter="forceSaSearch">
+          <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
+        </div>
+        <ArtTableHeader v-model:columns="saColumnChecks" :loading="saLoading" layout="size,columns,settings" @refresh="onSaRefresh" />
+      </div>
+    </div>
+
+<ElCard class="art-table-card">
+      <ElTabs v-model="kind" class="auth-tabs">
         <ElTabPane label="ClusterRole" name="clusterrole">
-          <ArtTableHeader
-            v-model:columns="crColumnChecks"
-            :loading="crLoading"
-            layout="size,fullscreen,columns,settings"
-            style="margin-top: 15px"
-            @refresh="onCrRefresh"
-          >
-            <template #left>
-              <div class="workloads-toolbar">
-                <ElButton v-ripple @click="onRbacGenerator">新建策略</ElButton>
-                <div class="workloads-toolbar__filters">
-                  <ElInput
-                    v-model="crSearchForm.name"
-                    clearable
-                    placeholder="名称只能搜索一个关键字，Label格式要求：name=value"
-                    class="workloads-toolbar__search"
-                    @keyup.enter="runCrSearch"
-                    @clear="runCrSearch"
-                  />
-                  <div
-                    class="workloads-toolbar-search-btn"
-                    role="button"
-                    tabindex="0"
-                    title="搜索"
-                    @click="forceCrSearch"
-                    @keyup.enter="forceCrSearch"
-                  >
-                    <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
-                  </div>
-                </div>
-              </div>
-            </template>
-          </ArtTableHeader>
           <ArtTable
+            :show-table-header="false"
             row-key="rowKey"
             :loading="crLoading"
             :data="crData"
@@ -53,40 +72,8 @@
         </ElTabPane>
 
         <ElTabPane label="ClusterRoleBinding" name="clusterrolebinding">
-          <ArtTableHeader
-            v-model:columns="crbColumnChecks"
-            :loading="crbLoading"
-            layout="size,fullscreen,columns,settings"
-            style="margin-top: 15px"
-            @refresh="onCrbRefresh"
-          >
-            <template #left>
-              <div class="workloads-toolbar">
-                <ElButton v-ripple @click="onRbacGenerator">新建策略</ElButton>
-                <div class="workloads-toolbar__filters">
-                  <ElInput
-                    v-model="crbSearchForm.name"
-                    clearable
-                    placeholder="名称只能搜索一个关键字，Label格式要求：name=value"
-                    class="workloads-toolbar__search"
-                    @keyup.enter="runCrbSearch"
-                    @clear="runCrbSearch"
-                  />
-                  <div
-                    class="workloads-toolbar-search-btn"
-                    role="button"
-                    tabindex="0"
-                    title="搜索"
-                    @click="forceCrbSearch"
-                    @keyup.enter="forceCrbSearch"
-                  >
-                    <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
-                  </div>
-                </div>
-              </div>
-            </template>
-          </ArtTableHeader>
           <ArtTable
+            :show-table-header="false"
             row-key="rowKey"
             :loading="crbLoading"
             :data="crbData"
@@ -103,40 +90,8 @@
         </ElTabPane>
 
         <ElTabPane label="Role" name="role">
-          <ArtTableHeader
-            v-model:columns="roleColumnChecks"
-            :loading="roleLoading"
-            layout="size,fullscreen,columns,settings"
-            style="margin-top: 15px"
-            @refresh="onRoleRefresh"
-          >
-            <template #left>
-              <div class="workloads-toolbar">
-                <ElButton v-ripple @click="onRbacGenerator">新建策略</ElButton>
-                <div class="workloads-toolbar__filters">
-                  <ElInput
-                    v-model="roleSearchForm.name"
-                    clearable
-                    placeholder="名称只能搜索一个关键字，Label格式要求：name=value"
-                    class="workloads-toolbar__search"
-                    @keyup.enter="runRoleSearch"
-                    @clear="runRoleSearch"
-                  />
-                  <div
-                    class="workloads-toolbar-search-btn"
-                    role="button"
-                    tabindex="0"
-                    title="搜索"
-                    @click="forceRoleSearch"
-                    @keyup.enter="forceRoleSearch"
-                  >
-                    <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
-                  </div>
-                </div>
-              </div>
-            </template>
-          </ArtTableHeader>
           <ArtTable
+            :show-table-header="false"
             row-key="rowKey"
             :loading="roleLoading"
             :data="roleData"
@@ -153,40 +108,8 @@
         </ElTabPane>
 
         <ElTabPane label="RoleBinding" name="rolebinding">
-          <ArtTableHeader
-            v-model:columns="rbColumnChecks"
-            :loading="rbLoading"
-            layout="size,fullscreen,columns,settings"
-            style="margin-top: 15px"
-            @refresh="onRbRefresh"
-          >
-            <template #left>
-              <div class="workloads-toolbar">
-                <ElButton v-ripple @click="onRbacGenerator">新建策略</ElButton>
-                <div class="workloads-toolbar__filters">
-                  <ElInput
-                    v-model="rbSearchForm.name"
-                    clearable
-                    placeholder="名称只能搜索一个关键字，Label格式要求：name=value"
-                    class="workloads-toolbar__search"
-                    @keyup.enter="runRbSearch"
-                    @clear="runRbSearch"
-                  />
-                  <div
-                    class="workloads-toolbar-search-btn"
-                    role="button"
-                    tabindex="0"
-                    title="搜索"
-                    @click="forceRbSearch"
-                    @keyup.enter="forceRbSearch"
-                  >
-                    <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
-                  </div>
-                </div>
-              </div>
-            </template>
-          </ArtTableHeader>
           <ArtTable
+            :show-table-header="false"
             row-key="rowKey"
             :loading="rbLoading"
             :data="rbData"
@@ -203,40 +126,8 @@
         </ElTabPane>
 
         <ElTabPane label="ServiceAccount" name="serviceaccount">
-          <ArtTableHeader
-            v-model:columns="saColumnChecks"
-            :loading="saLoading"
-            layout="size,fullscreen,columns,settings"
-            style="margin-top: 15px"
-            @refresh="onSaRefresh"
-          >
-            <template #left>
-              <div class="workloads-toolbar">
-                <ElButton v-ripple @click="onRbacGenerator">新建策略</ElButton>
-                <div class="workloads-toolbar__filters">
-                  <ElInput
-                    v-model="saSearchForm.name"
-                    clearable
-                    placeholder="名称只能搜索一个关键字，Label格式要求：name=value"
-                    class="workloads-toolbar__search"
-                    @keyup.enter="runSaSearch"
-                    @clear="runSaSearch"
-                  />
-                  <div
-                    class="workloads-toolbar-search-btn"
-                    role="button"
-                    tabindex="0"
-                    title="搜索"
-                    @click="forceSaSearch"
-                    @keyup.enter="forceSaSearch"
-                  >
-                    <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
-                  </div>
-                </div>
-              </div>
-            </template>
-          </ArtTableHeader>
           <ArtTable
+            :show-table-header="false"
             row-key="rowKey"
             :loading="saLoading"
             :data="saData"
@@ -265,6 +156,7 @@
       @save="onYamlSave"
     />
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -989,54 +881,89 @@ import ClusterTableEmpty from './components/cluster-table-empty.vue'
 </script>
 
 <style>
-  .services-page .icon-action {
+  .auth-page .icon-action {
     opacity: 0;
     transition: opacity 0.15s;
   }
-  .services-page .el-table__row:hover .icon-action {
+  .auth-page .el-table__row:hover .icon-action {
     opacity: 1;
   }
-  .services-page .art-table .el-table {
+  .auth-page .art-table .el-table {
+    margin-top: 10px;
     font-size: 13px;
   }
-  .services-page .art-table .el-table th.el-table__cell {
+  .auth-page .art-table .el-table th.el-table__cell {
     font-size: 13px;
   }
   /* 名称列 ellipsis：让单元格在 flex 布局下可被压缩 */
-  .services-page .art-table .el-table .el-table__cell > .cell {
+  .auth-page .art-table .el-table .el-table__cell > .cell {
     min-width: 0;
   }
-  .services-page .el-tabs__header {
-    margin-top: -6px;
+
+  .auth-page .el-tabs__header {
+    margin: 0 0 4px;
+    flex-shrink: 0;
+  }
+  .auth-page .el-tabs__nav-wrap::after {
+    height: 1px;
+    background-color: var(--el-border-color-lighter);
+  }
+  .auth-page .el-tabs__item {
+    height: 40px;
+    line-height: 40px;
+    padding: 0 18px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--el-text-color-regular);
+  }
+  .auth-page .el-tabs__item.is-active {
+    color: var(--el-color-primary);
+    font-weight: 600;
+  }
+  .auth-page .el-tabs__active-bar {
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+  }
+
+  .auth-page .art-table-card {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .auth-page .art-table-card > .el-card__body {
+    padding-top: 8px;
   }
 </style>
 
 <style scoped>
-  .workloads-toolbar {
+  .auth-page {
     display: flex;
-    width: 100%;
-    min-width: 0;
-    flex-wrap: wrap;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .cluster-toolbar {
+    display: flex;
     align-items: center;
     justify-content: space-between;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    flex-shrink: 0;
     gap: 12px;
   }
 
-  .workloads-toolbar__filters {
+  .cluster-toolbar__right {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
-    margin-left: auto;
-    margin-right: 8px;
+    gap: 8px;
   }
 
-  .workloads-toolbar__search {
-    width: 350px;
+  .cluster-toolbar__search {
+    width: 250px;
     max-width: 100%;
   }
 
-  .workloads-toolbar-search-btn {
+  .cluster-toolbar-search-btn {
     flex-shrink: 0;
     display: flex;
     width: 32px;
@@ -1050,11 +977,11 @@ import ClusterTableEmpty from './components/cluster-table-empty.vue'
     transition: background-color 0.15s ease;
   }
 
-  .workloads-toolbar-search-btn:hover {
+  .cluster-toolbar-search-btn:hover {
     background: var(--art-gray-300);
   }
 
-  .workloads-toolbar-search-btn:focus-visible {
+  .cluster-toolbar-search-btn:focus-visible {
     outline: 2px solid var(--el-color-primary);
     outline-offset: 1px;
   }

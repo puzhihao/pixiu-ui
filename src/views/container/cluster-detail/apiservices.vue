@@ -1,53 +1,51 @@
 <template>
-  <div class="services-page">
-    <ElCard class="art-table-card">
-          <ArtTableHeader
-            v-model:columns="columnChecks"
-            :loading="loading"
-            layout="size,fullscreen,columns,settings"
-            style="margin-top: 15px"
-            @refresh="onRefresh"
-          >
-            <template #left>
-              <div class="workloads-toolbar">
-                <div class="workloads-toolbar__filters">
-                  <ElInput
-                    v-model="searchForm.name"
-                    clearable
-                    placeholder="请输入名称"
-                    class="workloads-toolbar__search"
-                    @keyup.enter="runSearch"
-                    @clear="runSearch"
-                  />
-                  <div
-                    class="workloads-toolbar-search-btn"
-                    role="button"
-                    tabindex="0"
-                    title="搜索"
-                    @click="forceSearch"
-                    @keyup.enter="forceSearch"
-                  >
-                    <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
-                  </div>
-                </div>
-              </div>
-            </template>
-          </ArtTableHeader>
+  <div class="apiservices-page">
+    <div class="cluster-toolbar">
+      <div />
+      <div class="cluster-toolbar__right">
+        <ElInput
+          v-model="searchForm.name"
+          clearable
+          placeholder="请输入名称"
+          class="cluster-toolbar__search"
+          @keyup.enter="runSearch"
+          @clear="runSearch"
+        />
+        <div
+          class="cluster-toolbar-search-btn"
+          role="button"
+          tabindex="0"
+          title="搜索"
+          @click="forceSearch"
+          @keyup.enter="forceSearch"
+        >
+          <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
+        </div>
+        <ArtTableHeader
+          v-model:columns="columnChecks"
+          :loading="loading"
+          layout="size,columns,settings"
+          @refresh="onRefresh"
+        />
+      </div>
+    </div>
 
-          <ArtTable
-            row-key="rowKey"
-            :loading="loading"
-            :data="data"
-            :columns="columns"
-            :pagination="pagination"
-            :pagination-options="CLUSTER_TABLE_PAGINATION_OPTIONS"
-            @pagination:size-change="handleSizeChange"
-            @pagination:current-change="handleCurrentChange"
-          >
-            <template #empty>
-              <ClusterTableEmpty />
-            </template>
-          </ArtTable>
+    <ElCard class="art-table-card">
+      <ArtTable
+        row-key="rowKey"
+        :show-table-header="false"
+        :loading="loading"
+        :data="data"
+        :columns="columns"
+        :pagination="pagination"
+        :pagination-options="CLUSTER_TABLE_PAGINATION_OPTIONS"
+        @pagination:size-change="handleSizeChange"
+        @pagination:current-change="handleCurrentChange"
+      >
+        <template #empty>
+          <ClusterTableEmpty />
+        </template>
+      </ArtTable>
     </ElCard>
 
     <K8sYamlDialog
@@ -236,15 +234,91 @@
 </script>
 
 <style>
-  .services-page .icon-action { opacity: 0; transition: opacity 0.15s; }
-  .services-page .el-table__row:hover .icon-action { opacity: 1; }
-  .workloads-toolbar__search { width: 350px; max-width: 100%; }
-  .workloads-toolbar__filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-left: auto; }
-  .workloads-toolbar-search-btn {
-    flex-shrink: 0; display: flex; width: 32px; height: 32px;
-    align-items: center; justify-content: center; border-radius: 6px;
-    background: transparent; border: none; cursor: pointer;
-    color: var(--el-text-color-secondary); transition: background 0.15s;
+  .apiservices-page .icon-action {
+    opacity: 0;
+    transition: opacity 0.15s;
   }
-  .workloads-toolbar-search-btn:hover { background: var(--art-gray-300); }
+
+  .apiservices-page .el-table__row:hover .icon-action {
+    opacity: 1;
+  }
+
+  .apiservices-page .art-table .el-table {
+    margin-top: 10px;
+    font-size: 13px;
+  }
+
+  .apiservices-page .art-table .el-table th.el-table__cell {
+    font-size: 13px;
+  }
+
+  .apiservices-page .workloads-op-cell {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 8px 10px;
+    min-width: 0;
+    justify-content: flex-end;
+  }
+</style>
+
+<style scoped>
+  .apiservices-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .apiservices-page :deep(.art-table-card) {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .apiservices-page :deep(.art-table-card > .el-card__body) {
+    padding-top: 4px;
+  }
+
+  .cluster-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    flex-shrink: 0;
+    gap: 12px;
+  }
+
+  .cluster-toolbar__right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .cluster-toolbar__search {
+    width: 250px;
+    max-width: 100%;
+  }
+
+  .cluster-toolbar-search-btn {
+    flex-shrink: 0;
+    display: flex;
+    width: 32px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--art-gray-300) 55%, transparent);
+    color: var(--el-text-color-secondary);
+    transition: background-color 0.15s ease;
+  }
+
+  .cluster-toolbar-search-btn:hover {
+    background: var(--art-gray-300);
+  }
+
+  .cluster-toolbar-search-btn:focus-visible {
+    outline: 2px solid var(--el-color-primary);
+    outline-offset: 1px;
+  }
 </style>

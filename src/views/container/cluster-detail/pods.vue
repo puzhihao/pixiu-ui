@@ -1,43 +1,41 @@
 <template>
   <div class="pods-page">
-    <ElCard class="art-table-card">
-      <ArtTableHeader
-        v-model:columns="columnChecks"
-        :loading="loading"
-        layout="size,fullscreen,columns,settings"
-        @refresh="onRefresh"
-      >
-        <template #left>
-          <div class="pods-toolbar">
-            <ElButton v-ripple :disabled="!selectedPods.length" @click="batchDeletePods">
-              销毁重建
-            </ElButton>
-            <div class="pods-toolbar__filters">
-              <ElInput
-                v-model="searchForm.name"
-                clearable
-                placeholder="请输入Pod名称"
-                class="pods-toolbar__name"
-                @keyup.enter="runSearch"
-                @clear="runSearch"
-              />
-              <div
-                class="pods-toolbar-search-btn"
-                role="button"
-                tabindex="0"
-                title="搜索"
-                @click="runSearch"
-                @keyup.enter="runSearch"
-              >
-                <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
-              </div>
-            </div>
-          </div>
-        </template>
-      </ArtTableHeader>
+    <div class="cluster-toolbar">
+      <ElButton v-ripple :disabled="!selectedPods.length" @click="batchDeletePods">
+        销毁重建
+      </ElButton>
+      <div class="cluster-toolbar__right">
+        <ElInput
+          v-model="searchForm.name"
+          clearable
+          placeholder="请输入Pod名称"
+          class="cluster-toolbar__search"
+          @keyup.enter="runSearch"
+          @clear="runSearch"
+        />
+        <div
+          class="cluster-toolbar-search-btn"
+          role="button"
+          tabindex="0"
+          title="搜索"
+          @click="runSearch"
+          @keyup.enter="runSearch"
+        >
+          <ArtSvgIcon icon="ri:search-line" class="text-g-700" />
+        </div>
+        <ArtTableHeader
+          v-model:columns="columnChecks"
+          :loading="loading"
+          layout="size,columns,settings"
+          @refresh="onRefresh"
+        />
+      </div>
+    </div>
 
+    <ElCard class="art-table-card">
       <ArtTable
         row-key="rowKey"
+        :show-table-header="false"
         :loading="loading"
         :data="data"
         :columns="visibleColumns"
@@ -1402,6 +1400,7 @@
     opacity: 1;
   }
   .pods-page .art-table .el-table {
+    margin-top: 10px;
     font-size: 13px;
   }
   .pods-page .art-table .el-table th.el-table__cell {
@@ -1420,47 +1419,44 @@
 </style>
 
 <style scoped>
-  .pods-toolbar {
+  .pods-page {
     display: flex;
-    width: 100%;
-    min-width: 0;
-    flex-wrap: wrap;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+
+  .pods-page :deep(.art-table-card) {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .pods-page :deep(.art-table-card > .el-card__body) {
+    padding-top: 4px;
+  }
+
+  .cluster-toolbar {
+    display: flex;
     align-items: center;
     justify-content: space-between;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    flex-shrink: 0;
     gap: 12px;
   }
 
-  .pods-toolbar__filters {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px;
-    margin-left: auto;
-    margin-right: 8px;
-  }
-
-  .pods-toolbar__ns-wrap {
+  .cluster-toolbar__right {
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
+    gap: 8px;
   }
 
-  .pods-toolbar__ns-select {
-    width: 160px;
-  }
-
-  .pods-toolbar__ns-select :deep(.el-select__placeholder) {
-    color: var(--el-text-color-regular);
-    font-size: 13px;
-  }
-
-  .pods-toolbar__name {
-    width: 360px;
+  .cluster-toolbar__search {
+    width: 250px;
     max-width: 100%;
   }
 
-  .pods-toolbar-search-btn {
+  .cluster-toolbar-search-btn {
     flex-shrink: 0;
     display: flex;
     width: 32px;
@@ -1474,11 +1470,11 @@
     transition: background-color 0.15s ease;
   }
 
-  .pods-toolbar-search-btn:hover {
+  .cluster-toolbar-search-btn:hover {
     background: var(--art-gray-300);
   }
 
-  .pods-toolbar-search-btn:focus-visible {
+  .cluster-toolbar-search-btn:focus-visible {
     outline: 2px solid var(--el-color-primary);
     outline-offset: 1px;
   }
